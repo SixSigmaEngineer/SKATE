@@ -36,11 +36,14 @@ if not defined CODEX_EXE (
 )
 
 echo Replacing any older SKATE MCP registration...
-"%CODEX_EXE%" mcp remove skate >nul 2>nul
+rem A command-line override keeps MCP setup working when an older Codex
+rem config still contains the retired service_tier = "default" value.
+set "CODEX_TIER_OVERRIDE=service_tier='flex'"
+"%CODEX_EXE%" -c "%CODEX_TIER_OVERRIDE%" mcp remove skate >nul 2>nul
 if exist "%SKATE_MCP_EXE%" (
-    "%CODEX_EXE%" mcp add skate -- "%SKATE_MCP_EXE%" --transport stdio
+    "%CODEX_EXE%" -c "%CODEX_TIER_OVERRIDE%" mcp add skate -- "%SKATE_MCP_EXE%" --transport stdio
 ) else (
-    "%CODEX_EXE%" mcp add skate -- "%SKATE_PYTHON%" "%SKATE_MCP%" --transport stdio
+    "%CODEX_EXE%" -c "%CODEX_TIER_OVERRIDE%" mcp add skate -- "%SKATE_PYTHON%" "%SKATE_MCP%" --transport stdio
 )
 if errorlevel 1 (
     echo.
