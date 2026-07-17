@@ -25,7 +25,8 @@ if errorlevel 1 (
 :runtime_ready
 
 set "CODEX_EXE="
-for /f "usebackq delims=" %%I in (`powershell.exe -NoProfile -Command "$candidate = Get-ChildItem -Path (Join-Path $env:LOCALAPPDATA 'OpenAI\Codex\bin') -Filter codex.exe -Recurse -File -ErrorAction SilentlyContinue ^| Sort-Object LastWriteTime -Descending ^| Select-Object -First 1 -ExpandProperty FullName; if ($candidate) { $candidate }"`) do set "CODEX_EXE=%%I"
+if exist "%LOCALAPPDATA%\OpenAI\Codex\bin\codex.exe" set "CODEX_EXE=%LOCALAPPDATA%\OpenAI\Codex\bin\codex.exe"
+if not defined CODEX_EXE for /f "delims=" %%I in ('dir /b /s /a-d "%LOCALAPPDATA%\OpenAI\Codex\bin\codex.exe" 2^>nul') do if not defined CODEX_EXE set "CODEX_EXE=%%I"
 if not defined CODEX_EXE for /f "delims=" %%I in ('where codex 2^>nul') do if not defined CODEX_EXE set "CODEX_EXE=%%I"
 if not defined CODEX_EXE (
     echo Codex CLI was not found on PATH.

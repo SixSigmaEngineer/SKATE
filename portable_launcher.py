@@ -48,22 +48,29 @@ def _documents_dir() -> Path:
 
 
 def _seed_vault(root: Path) -> None:
-    """First run for installed users: create the vault and seed it with the
-    bundled demo session + note templates so nothing starts empty."""
+    """Merge bundled demo content into the installed vault without deleting
+    or replacing any user-created sessions, notes, settings, or files."""
     root.mkdir(parents=True, exist_ok=True)
     seed = EXE_DIR / "vault-seed"
     for sub in ("conversations", "sessions", "templates", "workshop-knowledge-documents"):
         target = root / sub
-        if target.exists():
-            continue
         source = seed / sub
         if source.exists():
-            shutil.copytree(source, target)
+            # Existing vaults may predate the bundled demo. Merge only the
+            # missing demo files instead of skipping the entire folder.
+            shutil.copytree(source, target, dirs_exist_ok=True, copy_function=_copy_if_missing)
         else:
             target.mkdir(parents=True, exist_ok=True)
     for fname in ("INDEX.md", "README.md"):
         if not (root / fname).exists() and (seed / fname).exists():
             shutil.copy2(seed / fname, root / fname)
+
+
+def _copy_if_missing(source: str, destination: str) -> str:
+    """copytree callback that preserves an existing destination file."""
+    if not Path(destination).exists():
+        shutil.copy2(source, destination)
+    return destination
 
 
 if INSTALLED:

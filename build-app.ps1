@@ -60,6 +60,9 @@ Write-Host "`n[1/3] Building standalone app (PyInstaller onedir)..." -Foreground
     --add-data "$Root\ui\templates;ui\templates" `
     --add-data "$Root\ui\static;ui\static" `
     $Launcher
+if ($LASTEXITCODE -ne 0) {
+    throw "PyInstaller failed while building SKATE.exe."
+}
 
 $AppDir = Join-Path $Staging "SKATE"
 if (-not (Test-Path (Join-Path $AppDir "SKATE.exe"))) {
@@ -101,6 +104,9 @@ foreach ($dll in $RuntimeDlls) {
 }
 $McpArgs += $McpLauncher
 & $Python -m PyInstaller @McpArgs
+if ($LASTEXITCODE -ne 0) {
+    throw "PyInstaller failed while building SKATE-MCP.exe."
+}
 
 if (-not (Test-Path (Join-Path $AppDir "SKATE-MCP.exe"))) {
     throw "Build finished, but SKATE-MCP.exe was not found."

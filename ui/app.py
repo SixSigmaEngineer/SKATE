@@ -3072,7 +3072,13 @@ def _run_server(host: str, port: int, server_holder: dict):
     server.run()
 
 
-def _open_skate_window(url: str) -> bool:
+def _open_skate_window(
+    url: str,
+    *,
+    hide_on_close: bool = False,
+    window_holder: dict | None = None,
+    quitting: threading.Event | None = None,
+) -> bool:
     """Open SKATE in a small native window when pywebview is available."""
     try:
         if sys.platform.startswith("win"):
@@ -3094,13 +3100,23 @@ def _open_skate_window(url: str) -> bool:
 
     try:
         icon_path = STATIC_DIR / "favicon.ico"
-        webview.create_window(
+        window = webview.create_window(
             "SKATE",
             url,
             width=1280,
             height=860,
             min_size=(980, 680),
         )
+        if window_holder is not None:
+            window_holder["window"] = window
+        if hide_on_close:
+            def on_closing():
+                if quitting is not None and quitting.is_set():
+                    return True
+                window.hide()
+                return False
+
+            window.events.closing += on_closing
         webview.start(icon=str(icon_path) if icon_path.exists() else None)
         return True
     except Exception as e:
@@ -3143,32 +3159,31 @@ def _launch_with_tray(host: str, port: int, open_browser: bool, app_window: bool
     )
     server_thread.start()
 
-    # Wait briefly so server is up before opening browser
-    time.sleep(1.0)
-    if open_browser and app_window:
-        if _open_skate_window(url):
-            srv = server_holder.get("server")
-            if srv is not None:
-                srv.should_exit = True
-            server_thread.join(timeout=3.0)
-            return
-    elif open_browser:
-        _open_skate(url, app_window)
+    window_holder: dict = {}
+    quitting = threading.Event()
 
     def on_open(icon, item):
-        _open_skate(url, False)
+        window = window_holder.get("window")
+        if window is not None:
+            window.show()
+        else:
+            _open_skate(url, False)
 
     def on_quit(icon, item):
+        quitting.set()
         srv = server_holder.get("server")
         if srv is not None:
             srv.should_exit = True
+        window = window_holder.get("window")
+        if window is not None:
+            window.destroy()
         icon.stop()
 
     menu = pystray.Menu(
         pystray.MenuItem("Open SKATE", on_open, default=True),
         pystray.MenuItem(f"Running at {url}", None, enabled=False),
         pystray.Menu.SEPARATOR,
-        pystray.MenuItem("Quit", on_quit),
+        pystray.MenuItem("Exit SKATE", on_quit),
     )
 
     icon = pystray.Icon(
@@ -3182,7 +3197,29 @@ def _launch_with_tray(host: str, port: int, open_browser: bool, app_window: bool
     print(f"  Vault: {HERE.parent}")
     print(f"  Look for the skateboard icon in your Windows tray.\n")
 
-    icon.run()  # Blocks the main thread. Returns when Quit is clicked.
+    # Wait briefly so the server is ready before opening the UI.
+    time.sleep(1.0)
+    if open_browser and app_window:
+        # The tray runs alongside pywebview. Closing the native window hides
+        # it; only the tray's Exit SKATE command terminates the application.
+        icon.run_detached()
+        if _open_skate_window(
+            url,
+            hide_on_close=True,
+            window_holder=window_holder,
+            quitting=quitting,
+        ):
+            icon.stop()
+            srv = server_holder.get("server")
+            if srv is not None:
+                srv.should_exit = True
+            server_thread.join(timeout=3.0)
+            return
+        icon.stop()
+    elif open_browser:
+        _open_skate(url, app_window)
+
+    icon.run()  # Blocks the main thread. Returns when Exit SKATE is clicked.
 
     # After tray exits, give the server a moment to clean up
     srv = server_holder.get("server")
