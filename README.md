@@ -4,6 +4,8 @@
 
 <h1 align="center">SKATE</h1>
 
+<p align="center"><strong>Scalable Knowledge Architecture &amp; Technology Engine</strong></p>
+
 <h3 align="center">Local-first Workshop Memory & Design-Thinking Engine</h3>
 
 <p align="center">
