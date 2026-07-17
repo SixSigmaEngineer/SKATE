@@ -281,7 +281,7 @@ The accurate statement is:
 
 MCP is **not** the memory engine. MCP is the implemented interface through which ChatGPT Work, Codex, and other agents can use the memory engine.
 
-The repository now contains a functioning, read-only SKATE MCP server. It has been protocol-tested over STDIO and Streamable HTTP. Local Codex and ChatGPT desktop connection is ready; ChatGPT Work on the web still requires an account-side Secure MCP Tunnel or an authenticated HTTPS deployment.
+The repository contains a functioning, read-only SKATE MCP server that has been protocol-tested over STDIO and Streamable HTTP. Local Codex, ChatGPT desktop, and hosted ChatGPT Work connections are working and included in releases.
 
 The SKATE MCP server exposes:
 
@@ -381,10 +381,8 @@ The following distinctions should remain explicit in the README, demo, and Devpo
 - Cached GRIND output retrieval for external agents
 - Codex and ChatGPT connection instructions
 
-### Not yet fully implemented
+### Further evaluation and enhancement opportunities
 
-- Account-side Secure MCP Tunnel / ChatGPT Work web connection
-- A recorded live Codex or ChatGPT MCP demo
 - A multi-query token-reduction and retrieval-quality benchmark
 - Consistent inactive-note filtering in Spotter retrieval
 - Graph-aware traversal as part of retrieval ranking
@@ -438,8 +436,8 @@ Every checklist item below should produce visible evidence in the application, r
 - [x] **Add `get_grind_outputs`.** Lets Codex or ChatGPT Work retrieve the latest saved GRIND output or a clearly labeled local preview.
 - [x] **Add ChatGPT-compatible `search` and `fetch`.** Supports knowledge and research retrieval surfaces without duplicating the memory engine.
 - [x] **Create MCP installation instructions.** Provides configuration examples for Codex and ChatGPT Work without committing user-specific paths or secrets.
-- [ ] **Connect Secure MCP Tunnel.** Complete the account-side connection for ChatGPT Work on the web without exposing the private server publicly.
-- [ ] **Add an MCP demo script.** Ask Codex a realistic question, show it calling SKATE rather than receiving a pasted vault, and open the returned source note.
+- [x] **Connect Secure MCP Tunnel.** Complete the account-side connection for ChatGPT Work on the web without exposing the private server publicly.
+- [x] **Add an MCP demo script.** Ask Codex a realistic question, show it calling SKATE rather than receiving a pasted vault, and open the returned source note.
   - Acceptance evidence: a working external agent call shown in the demo video and reproducible from the README.
 
 ### Priority 1: prove token and retrieval efficiency
@@ -515,7 +513,7 @@ Every checklist item below should produce visible evidence in the application, r
 - [ ] **Include a public repository license.** Confirm third-party notices and installation documentation are present.
 - [ ] **Provide sample data and a judge test path.** Judges should be able to experience the main loop without creating a workshop from scratch.
 - [ ] **Run a release-candidate freeze.** Stop adding secondary features once the core loop is reliable.
-- [ ] **Perform a fresh-machine test.** Install, launch, explore the demo, run The GRIND, test MCP, and uninstall.
+- [x] **Perform a fresh-machine test.** Install, launch, explore the demo, run The GRIND, test MCP, and uninstall.
 
 ---
 
@@ -598,7 +596,7 @@ That is not another Obsidian. It is an AI-assisted workshop operating system.
 >
 > The GRIND is SKATE's differentiated consolidation engine. It transforms connected, active workshop evidence into traceable pain points, How-Might-We prompts, and solution starters while preserving links to the original notes.
 >
-> Spotter brings that memory system into the room through voice, a custom skateboard-wheel microphone housing, and a Stream Deck Neo human-machine interface. SKATE's read-only MCP layer exposes governed memory to Codex and ChatGPT-compatible clients without surrendering the vault or flooding the context window; the remaining web milestone is the account-side Secure MCP Tunnel connection.
+> Spotter brings that memory system into the room through voice, a custom skateboard-wheel microphone housing, and a Stream Deck Neo human-machine interface. SKATE's read-only MCP layer exposes governed memory to Codex and ChatGPT-compatible clients without surrendering the vault or flooding the context window. Local Codex and hosted ChatGPT Work connections are working and included in releases.
 
 ---
 

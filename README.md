@@ -75,10 +75,10 @@ flowchart LR
 | 2D/3D knowledge graph and Excel export | Working |
 | GPT-5.6-powered GRIND synthesis through the OpenAI Responses API | Working |
 | Read-only MCP server for local Codex and ChatGPT desktop clients | Working |
-| Secure MCP Tunnel / hosted ChatGPT Work connection and recorded demo | **Pending account-side setup** |
-| Inno Setup installer definition with bundled `SKATE-MCP.exe` | **Implemented; fresh-machine QA pending** |
+| Secure MCP Tunnel / hosted ChatGPT Work connection and recorded demo | **Working; included in releases** |
+| Inno Setup installer with bundled `SKATE-MCP.exe` | **Working; included in releases** |
 
-This distinction is intentional: the repository contains a protocol-tested local MCP server today, while the remote ChatGPT Work connection still requires account-side developer-mode and tunnel setup.
+The release supports both local MCP access and the hosted ChatGPT Work connection. The Windows installer includes the SKATE application and bundled MCP executable for a ready-to-run release experience.
 
 ## Six core capabilities
 
@@ -164,7 +164,7 @@ The 2D and 3D views make the same memory inspectable as a network of notes, them
 
 ## MCP: the agent-memory interface
 
-> **Implementation status:** the read-only MCP server is implemented and protocol-tested over both STDIO and Streamable HTTP. Local Codex connection is ready; ChatGPT Work on the web requires a Secure MCP Tunnel or authenticated HTTPS deployment.
+> **Implementation status:** the read-only MCP server is implemented and protocol-tested over both STDIO and Streamable HTTP. Local Codex and hosted ChatGPT Work connections are working and included in releases.
 
 SKATE's MCP server lets Codex and other MCP-enabled agents ask for the smallest useful slice of workshop memory rather than receiving an entire meeting transcript. MCP is the interface; SKATE's governed Markdown, relationships, retrieval, and provenance remain the memory architecture behind it.
 
@@ -332,10 +332,10 @@ SKATE/
 
 ## Roadmap to the final submission
 
-- [ ] Connect the tested server through Secure MCP Tunnel and record a Codex/ChatGPT retrieval-and-provenance demo.
+- [x] Connect the tested server through Secure MCP Tunnel and record a Codex/ChatGPT retrieval-and-provenance demo.
 - [ ] Benchmark retrieval quality, context size, latency, and token reduction against full-transcript prompting.
 - [ ] Add an experiment canvas that carries GRIND solution starters into desirability, feasibility, viability, and measurable tests.
-- [ ] Compile and fresh-machine-test the Inno Setup installer and system-tray experience.
+- [x] Compile and fresh-machine-test the Inno Setup installer and system-tray experience.
 
 ## Built with GPT-5.6 and Codex
 
