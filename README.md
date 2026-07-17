@@ -336,13 +336,6 @@ SKATE/
 `-- LICENSE                     MIT license
 ```
 
-## Roadmap to the final submission
-
-- [x] Connect the tested server through Secure MCP Tunnel and record a Codex/ChatGPT retrieval-and-provenance demo.
-- [ ] Benchmark retrieval quality, context size, latency, and token reduction against full-transcript prompting.
-- [ ] Add an experiment canvas that carries GRIND solution starters into desirability, feasibility, viability, and measurable tests.
-- [x] Compile and fresh-machine-test the Inno Setup installer and system-tray experience.
-
 ## Built with GPT-5.6 and Codex
 
 SKATE is an output of the **OpenAI Build Week Challenge** and is submitted in **Work & Productivity**.
