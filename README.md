@@ -7,6 +7,14 @@
 <h3 align="center">Local-first Workshop Memory & Design-Thinking Engine</h3>
 
 <p align="center">
+  <img src="branding-images/SOL-GPT-5.6.png" alt="SOL — OpenAI GPT-5.6 skateboard" width="1000">
+</p>
+
+<p align="center">
+  <strong>Built with GPT-5.6 and Codex for the OpenAI Build Week Hackathon.</strong>
+</p>
+
+<p align="center">
   Turn live conversations into governed organizational memory, retrieve only the evidence that matters, and use GPT-5.6 to generate traceable design-thinking outcomes.
 </p>
 
