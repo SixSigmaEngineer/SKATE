@@ -203,6 +203,12 @@ Connection instructions, privacy boundaries, demo prompts, and the ChatGPT Work 
   <img src="branding-images/Spotter%20Logo.png" alt="Spotter workshop agent" width="190">
 </p>
 
+### Why the name “Spotter”?
+
+In skateboarding, the person attempting the trick is not entirely alone. A **spotter** watches the surrounding environment, looks out for approaching hazards, helps determine when the path is clear, and supports the skater without taking over the attempt. The role is an alert, trusted safety net operating just outside the spotlight. [SurferToday describes the underrated role of the skate spotter](https://www.surfertoday.com/skateboarding/the-underrated-role-of-the-skate-spotter).
+
+SKATE's Spotter serves the same purpose in a workshop. The facilitator still leads the room and makes the judgment calls; Spotter listens at the edge of the session, preserves important signals, identifies risks and gaps, and helps the team move forward without replacing the human leading the work.
+
 Spotter is the facilitation copilot. It helps capture pains, observations, questions, actions, solutions, recommendations, and insights without forcing the facilitator to disengage from the room. Spotter Live can maintain a timestamped transcript; local Whisper keeps audio processing on the machine, while optional ElevenLabs Scribe Realtime adds speaker diarization such as Speaker 1 and Speaker 2.
 
 ### Stream Deck Neo control surface
