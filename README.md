@@ -73,7 +73,8 @@ flowchart LR
 |---|---|
 | Local-first Markdown/YAML memory with typed relationships | Working |
 | Spotter and Spotter Live workshop capture | Working |
-| Local Whisper and optional ElevenLabs speech-to-text | Working |
+| OpenAI live transcription and GPT-Realtime mini talk-back | Working |
+| Local Whisper and optional ElevenLabs speaker diarization | Working |
 | 2D/3D knowledge graph and Excel export | Working |
 | GPT-5.6-powered GRIND synthesis through the OpenAI Responses API | Working |
 | Read-only MCP server for local Codex and ChatGPT desktop clients | Working |
@@ -87,7 +88,7 @@ The release supports both local MCP access and the hosted ChatGPT Work connectio
 - **Governed local memory** - human-readable Markdown with YAML metadata, active/inactive governance, themes, provenance, and typed relationships such as `supports`, `contradicts`, `causes`, `leads_to`, and `references`.
 - **Meaningful GPT-5.6 reasoning** - GRIND is explicitly pinned to GPT-5.6 with high reasoning effort for cross-note evidence synthesis, while Spotter uses a faster GPT-5.6 configuration for live facilitation.
 - **Evidence-backed retrieval** - weighted lexical search plus optional local semantic embeddings retrieves a small, relevant evidence set instead of repeatedly loading a complete vault or transcript.
-- **Spotter and Spotter Live** - capture manual notes, transcribe recordings locally, listen to a room, or use ElevenLabs Scribe for realtime speaker labels.
+- **Spotter and Spotter Live** - capture manual notes, listen to a room with OpenAI live transcription, and hear Spotter respond through GPT-Realtime mini. Local Whisper provides a private fallback; ElevenLabs remains optional for realtime speaker labels.
 - **The GRIND** - explore memory as a 2D/3D graph, identify patterns across a session, generate IDEO-style outputs, trace results to source notes, and export the full ranked synthesis to Excel.
 - **A physical workshop interface** - an Elgato Stream Deck Neo and a custom skateboard-wheel microphone puck give the agent a practical human-machine interface in the room.
 
@@ -211,7 +212,7 @@ In skateboarding, the person attempting the trick is not entirely alone. A **spo
 
 SKATE's Spotter serves the same purpose in a workshop. The facilitator still leads the room and makes the judgment calls; Spotter listens at the edge of the session, preserves important signals, identifies risks and gaps, and helps the team move forward without replacing the human leading the work.
 
-Spotter is the facilitation copilot. It helps capture pains, observations, questions, actions, solutions, recommendations, and insights without forcing the facilitator to disengage from the room. Spotter Live can maintain a timestamped transcript; local Whisper keeps audio processing on the machine, while optional ElevenLabs Scribe Realtime adds speaker diarization such as Speaker 1 and Speaker 2.
+Spotter is the facilitation copilot. It helps capture pains, observations, questions, actions, solutions, recommendations, and insights without forcing the facilitator to disengage from the room. Spotter Live can maintain a timestamped transcript using OpenAI GPT-Realtime Whisper and speak responses through GPT-Realtime mini. Local Whisper keeps transcription on the machine, while optional ElevenLabs Scribe Realtime adds speaker diarization such as Speaker 1 and Speaker 2.
 
 ### Stream Deck Neo control surface
 
@@ -235,7 +236,7 @@ Recommended order (six to eight images maximum):
 1. Library/dashboard
 2. A realistic meeting note with colored #O, #P, #Q, and #A signals
 3. Spotter
-4. Spotter Live with ElevenLabs speaker labels
+4. Spotter Live with OpenAI live transcription and GPT-Realtime mini talk-back; optionally show ElevenLabs speaker labels
 5. 2D or 3D GRIND graph
 6. GRIND pain / HMW / solution outputs with source links
 7. Stream Deck + microphone puck in use
@@ -270,7 +271,7 @@ cd SKATE
 
 Then double-click **`Start SKATE.bat`**. On first run it creates a private `.venv`, installs the required packages, starts the local service, and opens the SKATE native app window. Use **`Stop SKATE.bat`** to stop the local service.
 
-Open **Settings** and add an OpenAI API key to use GPT-5.6 features. An ElevenLabs key is optional. For fully local transcription, run **`Install Local Whisper.bat`** once and restart SKATE.
+Open **Settings** and add an OpenAI API key. That single key powers GPT-5.6 reasoning, OpenAI live transcription, recording transcription, and GPT-Realtime mini voice responses. An ElevenLabs key is optional and is only needed when speaker diarization is desired. For fully local transcription, run **`Install Local Whisper.bat`** once and restart SKATE.
 
 ### Manual development run
 
@@ -288,7 +289,8 @@ The local service binds to `127.0.0.1:8765`. Add `--reload` for development or `
 |---|---|
 | GPT-5.6 GRIND and Spotter reasoning | OpenAI API key |
 | Local audio/video transcription | Local Whisper installation |
-| Realtime transcript with speaker diarization | ElevenLabs API key and Scribe Realtime |
+| Live transcript and spoken Spotter responses | OpenAI API key; GPT-Realtime Whisper and GPT-Realtime mini |
+| Optional realtime speaker diarization | ElevenLabs API key and Scribe Realtime |
 | Local semantic retrieval | FastEmbed or Ollama with `nomic-embed-text` |
 | Basic retrieval and manual notes | No cloud service required |
 
@@ -300,7 +302,7 @@ The local service binds to `127.0.0.1:8765`. Add `--reload` for development or `
 - Optional semantic embeddings can run locally and are cached by content hash.
 - The server binds to `127.0.0.1`, not a public network interface by default.
 - `settings.json`, private conversations, transcripts, logs, and local model artifacts are excluded through `.gitignore`.
-- Content leaves the computer only when the user invokes a configured cloud capability such as OpenAI reasoning or ElevenLabs speech.
+- Content leaves the computer only when the user invokes a configured cloud capability such as OpenAI reasoning/voice or optional ElevenLabs speech.
 - Active/inactive status controls whether a note or session participates in GRIND analysis.
 
 ## Technology stack
@@ -311,7 +313,7 @@ The local service binds to `127.0.0.1:8765`. Add `--reload` for development or `
 | AI reasoning | OpenAI GPT-5.6 via the Responses API |
 | Memory | Markdown, YAML frontmatter, typed relationships |
 | Retrieval | Weighted lexical scoring, optional FastEmbed or Ollama embeddings |
-| Speech | Local Whisper; optional ElevenLabs Scribe and text-to-speech |
+| Speech | OpenAI GPT-Realtime Whisper and GPT-Realtime mini; Local Whisper fallback; optional ElevenLabs diarization |
 | Visualization | Custom 2D/3D WebGL knowledge graph |
 | Export | Excel workshop synthesis |
 | Physical HMI | Elgato Stream Deck Neo and custom microphone housing |

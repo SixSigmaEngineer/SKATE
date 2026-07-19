@@ -39,9 +39,9 @@ Spotter is the AI facilitation co-pilot. Type a question or paste a workshop cap
 
 ## Spotter Live
 
-The always-on version for a live room. Press the toggle to start listening: it writes a timestamped markdown transcript as people talk (browser speech for live text, ElevenLabs Scribe for the clean final, or fully local Whisper). You can also ask Spotter questions mid-session by voice or text without stopping the transcript.
+The always-on version for a live room. Press the toggle to start listening: OpenAI GPT-Realtime Whisper writes a low-latency timestamped transcript, and GPT-Realtime mini can speak Spotter's answer. Fully local Whisper is the private fallback. ElevenLabs Scribe remains an optional engine when speaker labels are required. You can ask Spotter questions mid-session by voice or text without stopping the transcript.
 
-**Voice diarization (required):** a workshop transcript is only useful if it records *who* said what. Spotter Live needs speaker diarization — separating and labeling each voice in the room — via the **ElevenLabs Scribe API**, which returns per-speaker segments. Transcript lines should carry a speaker label (e.g., `Speaker 2 [00:14:32]: ...`), ideally mappable to participant names for the session.
+**Optional voice diarization:** OpenAI is the primary live voice path but does not currently add speaker labels in SKATE. When a workshop needs *who said what*, choose **ElevenLabs Scribe** to separate voices into labels such as `Speaker 1` and `Speaker 2`.
 
 ## The Grind (mind map + synthesis)
 
@@ -59,4 +59,4 @@ The **Library** lists all entries newest-first. **Search** runs full-text querie
 
 The app uses exactly **two external APIs**: **OpenAI** (all LLM work — Spotter, Grind synthesis, classification — plus optional embeddings, STT, and TTS) and **ElevenLabs** (Scribe speech-to-text with diarization, and text-to-speech). Nothing else calls out.
 
-Four sections: **General AI / API** — configure the GPT-5.6 family, reasoning levels, max output, and the OpenAI API key. GRIND is visibly fixed to GPT-5.6 Sol/high reasoning; Spotter defaults to GPT-5.6 Terra/low reasoning. **Spotter** — agent name, subtitle, persona, methodology stack, and response style. **Voice** — microphone selection, local Whisper or ElevenLabs speech-to-text, voices, and speak-aloud controls. **Stream Deck Trigger** — port and auto-send for hardware capture buttons. Settings also hosts the **OneNote import**: point it at exported OneNote files and each notebook becomes a session, each page a note (with a dry-run preview).
+Four sections: **General AI / API** — configure the GPT-5.6 family, reasoning levels, max output, and the OpenAI API key. GRIND is visibly fixed to GPT-5.6 Sol/high reasoning; Spotter defaults to GPT-5.6 Terra/low reasoning. **Spotter** — agent name, subtitle, persona, methodology stack, and response style. **Voice** — microphone selection; OpenAI live transcription and GPT-Realtime mini voice; local Whisper; or optional ElevenLabs speech with diarization. **Stream Deck Trigger** — port and auto-send for hardware capture buttons. Settings also hosts the **OneNote import**: point it at exported OneNote files and each notebook becomes a session, each page a note (with a dry-run preview).

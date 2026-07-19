@@ -35,7 +35,7 @@
       </button>
       <input type="hidden" id="engineSelect" value="{{ stt_provider }}">
       <span><strong>Engine:</strong>
-        <span class="file-pill">{% if stt_provider == 'elevenlabs' %}ElevenLabs Scribe Realtime{% else %}Local Whisper{% endif %}</span>
+        <span class="file-pill">{% if stt_provider == 'openai' %}OpenAI GPT-Realtime Whisper{% elif stt_provider == 'elevenlabs' %}ElevenLabs Scribe Realtime{% else %}Local Whisper{% endif %}</span>
       </span>
       <a class="button" href="/settings">Change in Settings</a>
       <span class="muted" id="liveStatus"><span class="live-dot" id="liveDot"></span><span id="liveStatusText">Idle</span></span>
@@ -43,6 +43,9 @@
     <p class="muted" id="engineCapability" style="margin: 8px 0 6px;"></p>
     {% if stt_provider == 'elevenlabs' and not elevenlabs_key_present %}
       <p class="notice">ElevenLabs is selected, but no API key is saved. Add the key in Settings before starting.</p>
+    {% endif %}
+    {% if stt_provider == 'openai' and not openai_key_present %}
+      <p class="notice">OpenAI Realtime is selected, but no OpenAI API key is saved. Add the key in Settings before starting.</p>
     {% endif %}
     <p class="muted" style="margin: 8px 0 6px;">Transcript file: <span class="file-pill" id="filePill">created when you start</span></p>
     <div class="live-transcript" id="liveTranscript" aria-live="polite">
@@ -94,6 +97,8 @@ let fileName = "";
 let recognition = null;     // room SR (browser engine)
 let ws = null;              // realtime socket (elevenlabs engine)
 let audioCtx = null, processor = null, micStream = null;
+let openAiCommitTimer = null;
+const openAiDeltas = new Map();
 let localStream = null, localRecorder = null, localChunkTimer = null, localCountdownTimer = null;
 let localQueue = [], localQueueBusy = false;
 let pendingElevenCommit = "", pendingElevenCommitTimer = null;
@@ -118,7 +123,9 @@ async function openConfiguredMicrophone() {
 }
 
 function updateEngineCapability() {
-  if (engineSelect.value === "elevenlabs") {
+  if (engineSelect.value === "openai") {
+    engineCapability.textContent = "OpenAI GPT-Realtime Whisper provides live captions; Spotter talks back with GPT-Realtime mini. Audio is sent to OpenAI. Speaker labels are not available.";
+  } else if (engineSelect.value === "elevenlabs") {
     engineCapability.textContent = "ElevenLabs Scribe Realtime can label different voices as Speaker 1, Speaker 2, and so on. Audio is sent to ElevenLabs.";
   } else {
     engineCapability.textContent = "Local Whisper is private and near-live: it stays on this computer and adds text in short processed segments without speaker labels.";
@@ -365,6 +372,79 @@ function stopLocalEngine() {
   }
 }
 
+// ---------- OpenAI realtime transcription (desktop-safe) ----------
+async function startOpenAIEngine() {
+  openAiDeltas.clear();
+  try {
+    micStream = await openConfiguredMicrophone();
+  } catch (e) {
+    setStatus("Microphone permission was blocked.", false);
+    return false;
+  }
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  ws = new WebSocket(`${proto}://${location.host}/ws/spotter-live-openai-stt`);
+  ws.onmessage = (event) => {
+    let msg = {};
+    try { msg = JSON.parse(event.data); } catch (e) { return; }
+    if (msg.type === "conversation.item.input_audio_transcription.delta") {
+      const itemId = msg.item_id || "current";
+      const text = (openAiDeltas.get(itemId) || "") + (msg.delta || "");
+      openAiDeltas.set(itemId, text);
+      showInterim(text.trim());
+    } else if (msg.type === "conversation.item.input_audio_transcription.completed") {
+      const itemId = msg.item_id || "current";
+      commitSegment(msg.transcript || openAiDeltas.get(itemId) || "");
+      openAiDeltas.delete(itemId);
+    } else if (msg.type === "error") {
+      const detail = msg.error || {};
+      // Empty/short commits can occur during room silence; keep the ear alive.
+      if (!String(detail.code || "").includes("buffer")) setStatus(detail.message || "OpenAI Realtime transcription error.", false);
+    }
+  };
+  ws.onclose = () => { if (roomActive) setStatus("OpenAI Realtime connection closed.", false); };
+
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+  const source = audioCtx.createMediaStreamSource(micStream);
+  processor = audioCtx.createScriptProcessor(4096, 1, 1);
+  processor.onaudioprocess = (event) => {
+    if (paused || !ws || ws.readyState !== WebSocket.OPEN) return;
+    const f32 = event.inputBuffer.getChannelData(0);
+    const i16 = new Int16Array(f32.length);
+    for (let i = 0; i < f32.length; i++) {
+      const s = Math.max(-1, Math.min(1, f32[i]));
+      i16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+    }
+    let bin = "";
+    const bytes = new Uint8Array(i16.buffer);
+    for (let i = 0; i < bytes.length; i += 8192) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+    ws.send(JSON.stringify({type: "audio", audio: btoa(bin)}));
+  };
+  source.connect(processor);
+  processor.connect(audioCtx.destination);
+  openAiCommitTimer = setInterval(() => {
+    if (!paused && ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({type: "commit"}));
+  }, 3000);
+  return true;
+}
+
+function stopOpenAIEngine() {
+  clearInterval(openAiCommitTimer);
+  openAiCommitTimer = null;
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    try { ws.send(JSON.stringify({type: "commit"})); } catch (e) {}
+  }
+  if (processor) { try { processor.disconnect(); } catch (e) {} processor = null; }
+  if (audioCtx) { try { audioCtx.close(); } catch (e) {} audioCtx = null; }
+  if (micStream) { micStream.getTracks().forEach((t) => t.stop()); micStream = null; }
+  if (ws) {
+    const socket = ws;
+    setTimeout(() => { try { socket.close(); } catch (e) {} }, 100);
+    ws = null;
+  }
+  openAiDeltas.clear();
+  clearInterim();
+}
+
 // ---------- ElevenLabs realtime engine ----------
 async function startElevenEngine() {
   speakerLabels.clear();
@@ -459,7 +539,9 @@ async function startRoom() {
   const engine = engineSelect.value;
   roomActive = true;
   paused = false;
-  const ok = engine === "elevenlabs"
+  const ok = engine === "openai"
+    ? await startOpenAIEngine()
+    : engine === "elevenlabs"
     ? await startElevenEngine()
     : engine === "local"
       ? await startLocalEngine()
@@ -470,10 +552,12 @@ async function startRoom() {
 }
 
 function stopRoom() {
+  const engine = engineSelect.value;
   roomActive = false;
   stopBrowserEngine();
   stopLocalEngine();
-  stopElevenEngine();
+  if (engine === "openai") stopOpenAIEngine();
+  if (engine === "elevenlabs") stopElevenEngine();
   updateToggleUI();
   setStatus("Stopped. Transcript saved.", false);
 }
@@ -484,6 +568,8 @@ function pauseRoom() {
   paused = true;
   if (engineSelect.value === "browser") stopBrowserEngine();
   if (engineSelect.value === "local") stopLocalEngine();
+  if (engineSelect.value === "openai") stopOpenAIEngine();
+  if (engineSelect.value === "elevenlabs") stopElevenEngine();
   updateToggleUI();
   setStatus("Room paused — talk to " + AGENT_NAME + "…", false);
 }
@@ -494,6 +580,8 @@ function resumeRoom() {
   if (!roomActive) { setStatus("Idle", false); return; }
   if (engineSelect.value === "browser") startBrowserEngine();
   if (engineSelect.value === "local") startLocalEngine();
+  if (engineSelect.value === "openai") startOpenAIEngine();
+  if (engineSelect.value === "elevenlabs") startElevenEngine();
   setStatus(engineSelect.value === "local" ? "Listening locally · transcript appears in short segments…" : "Listening to the room…", true);
 }
 
@@ -515,7 +603,7 @@ async function speak(text) {
     if (r.ok) { const cfg = await r.json(); speakAloud = !!cfg.speak_aloud; ttsProvider = cfg.tts_provider || ttsProvider; }
   } catch (e) {}
   if (!speakAloud) return;
-  if (ttsProvider === "elevenlabs") {
+  if (ttsProvider === "openai" || ttsProvider === "elevenlabs") {
     try {
       const res = await fetch("/api/speak", {
         method: "POST",

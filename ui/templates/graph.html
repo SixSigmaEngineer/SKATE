@@ -68,7 +68,7 @@
 
 <form id="grindFilters" class="filters grind-filters" method="get" action="/grind">
   <select name="session" id="grindSession">
-    <option value="">All sessions</option>
+    <option value="">All sessions — combined active graph</option>
     {% for row in sessions %}
       <option value="{{ row.key }}" {% if filters.session == row.key %}selected{% endif %}>{{ row.label }}</option>
     {% endfor %}
@@ -76,10 +76,12 @@
   <input name="entry_type" type="hidden" value="">
   <input name="date_from" type="date" value="{{ filters.date_from }}">
   <input name="date_to" type="date" value="{{ filters.date_to }}">
-  <input id="grindRunField" name="run" type="hidden" value="">
+  <input id="grindRunField" name="run" type="hidden" value="true" disabled>
   <button class="button primary" type="submit"><img class="button-icon" src="/static/icons/fit.svg" alt="">Apply</button>
   <a class="button" href="/grind">Clear</a>
 </form>
+
+<p class="muted grind-scope"><strong>Map scope: {{ scope_title }}.</strong> {{ scope_description }}</p>
 
 {% if grind_requires_session %}
   <p class="notice">Choose a session before running AI synthesis. The map below still shows the current filter scope.</p>
@@ -102,6 +104,8 @@
       <button class="button primary" type="button" id="startGrind">Start the Grind</button>
       <button class="button" type="button" id="bailGrind">Bail</button>
       <button class="button" type="button" id="fitMap">Fit</button>
+      <button class="button" type="button" id="zoomOutMap" title="Zoom farther out">Zoom −</button>
+      <button class="button" type="button" id="zoomInMap" title="Zoom farther in">Zoom +</button>
       <label class="chk"><input type="checkbox" id="toggleRelated" checked> Related rails</label>
       <label class="chk"><input type="checkbox" id="toggleThemeRails" checked> Theme rails</label>
       <label class="chk"><input type="checkbox" id="togglePhysics" checked> Physics</label>
@@ -1259,7 +1263,7 @@ svg.addEventListener("wheel", (event) => {
   const graphX = (pointerX - view.x) / view.scale;
   const graphY = (pointerY - view.y) / view.scale;
   const delta = event.deltaY > 0 ? 0.92 : 1.08;
-  const nextScale = Math.max(0.55, Math.min(2.2, view.scale * delta));
+  const nextScale = Math.max(0.25, Math.min(3.0, view.scale * delta));
   view.x = pointerX - graphX * nextScale;
   view.y = pointerY - graphY * nextScale;
   view.scale = nextScale;
@@ -1284,7 +1288,7 @@ canvas.addEventListener("pointerleave", () => showTooltip(null));
 canvas.addEventListener("pointerup", () => { pointer.active = false; });
 canvas.addEventListener("wheel", (event) => {
   event.preventDefault();
-  orbit.zoom = Math.max(420, Math.min(1250, orbit.zoom + event.deltaY * 0.8));
+  orbit.zoom = Math.max(320, Math.min(2400, orbit.zoom + event.deltaY * 1.15));
 });
 canvas.addEventListener("click", (event) => {
   const hit = hitTestCanvasNode(event);
@@ -1331,6 +1335,28 @@ document.getElementById("fitMap").addEventListener("click", () => {
   orbit = { yaw: -0.55, pitch: 0.42, zoom: 760 };
   statusLine.textContent = "Map fitted.";
 });
+function zoom2dAtCenter(factor) {
+  const centerX = width / 2;
+  const centerY = height / 2;
+  const graphX = (centerX - view.x) / view.scale;
+  const graphY = (centerY - view.y) / view.scale;
+  const nextScale = Math.max(0.25, Math.min(3.0, view.scale * factor));
+  view.x = centerX - graphX * nextScale;
+  view.y = centerY - graphY * nextScale;
+  view.scale = nextScale;
+}
+document.getElementById("zoomOutMap").addEventListener("click", () => {
+  if (mode === "3d") orbit.zoom = Math.min(2400, orbit.zoom * 1.28);
+  else zoom2dAtCenter(0.8);
+  orbitAuto = false;
+  statusLine.textContent = "Zoomed out.";
+});
+document.getElementById("zoomInMap").addEventListener("click", () => {
+  if (mode === "3d") orbit.zoom = Math.max(320, orbit.zoom / 1.28);
+  else zoom2dAtCenter(1.25);
+  orbitAuto = false;
+  statusLine.textContent = "Zoomed in.";
+});
 document.getElementById("togglePhysics").addEventListener("change", (event) => { physics = event.target.checked; });
 document.getElementById("toggleRelated").addEventListener("change", (event) => { showRelatedRails = event.target.checked; });
 document.getElementById("toggleThemeRails").addEventListener("change", (event) => { showThemeRails = event.target.checked; });
@@ -1344,7 +1370,8 @@ document.getElementById("startGrind").addEventListener("click", () => {
   orbitAuto = true;
   grindStartedAt = performance.now();
   if (!pageGeneratedGrind || currentSession !== loadedSession) {
-    grindRunField.value = "1";
+    grindRunField.disabled = false;
+    grindRunField.value = "true";
     statusLine.textContent = "Starting session GRIND and generating IDEO outputs...";
     document.getElementById("grindLoading").classList.remove("hidden");
     startGrindProgress();
@@ -1360,6 +1387,11 @@ document.getElementById("bailGrind").addEventListener("click", () => {
   statusLine.textContent = "Bailed. The map is still live for inspection.";
 });
 document.getElementById("toggleLabels").addEventListener("change", (event) => { showLabels = event.target.checked; });
+document.getElementById("grindSession").addEventListener("change", () => {
+  grindRunField.disabled = true;
+  statusLine.textContent = "Loading the selected session map...";
+  grindFilters.requestSubmit();
+});
 document.getElementById("view3d").addEventListener("click", () => {
   setMapMode("3d");
   statusLine.textContent = "Drag to orbit the 3D session map; click a node to inspect it.";

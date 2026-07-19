@@ -21,6 +21,7 @@ import threading
 import time
 import uuid
 import webbrowser
+import wave
 import zipfile
 from io import BytesIO
 from datetime import date
@@ -75,6 +76,8 @@ TRANSCRIPTION_JOBS_LOCK = threading.Lock()
 WHISPER_PROGRESS_LOCK = threading.Lock()
 WHISPER_MODEL_LOCK = threading.Lock()
 WHISPER_MODEL_CACHE: dict[str, object] = {"name": None, "model": None}
+APP_SHOW_REQUESTED = threading.Event()
+_SINGLE_INSTANCE_MUTEX = None
 
 OPENAI_MODEL_OPTIONS = [
     {"id": "gpt-5.6", "label": "GPT-5.6 Sol — frontier"},
@@ -111,11 +114,14 @@ You listen for the moments that matter - pain points, contradictions, root cause
     "spotter_style": """Operator-grade. Lead with the bottom line, then 2-3 supporting points. Keep answers skimmable and direct. No filler. When the user is capturing a pain point, idea, waste, VOC quote, risk, recommendation, or decision, reflect it back in clean structured form and ask at most one sharp follow-up. When asked to facilitate, be decisive and offer the next concrete step.""",
     "microphone": "system-default",
     "microphone_label": "",
-    "speech_to_text_provider": "local",
-    "text_to_speech_provider": "local",
-    "speak_responses_aloud": False,
-    "tts_voice": "alloy",
-    "tts_model": "tts-1",
+    "speech_to_text_provider": "openai",
+    "text_to_speech_provider": "openai",
+    "speak_responses_aloud": True,
+    "openai_realtime_model": "gpt-realtime-mini",
+    "openai_realtime_transcription_model": "gpt-realtime-whisper",
+    "openai_realtime_transcription_delay": "low",
+    "openai_realtime_voice": "marin",
+    "openai_batch_transcription_model": "gpt-4o-mini-transcribe",
     "elevenlabs_voice_id": "21m00Tcm4TlvDq8ikWAM",
     "elevenlabs_tts_model": "eleven_flash_v2_5",
     "elevenlabs_stt_model": "scribe_v2",
@@ -315,8 +321,8 @@ def _load_settings() -> dict:
     whisper_models = {m["id"] for m in WHISPER_MODELS}
     if settings.get("transcription_model") not in whisper_models:
         settings["transcription_model"] = "base"
-    if settings.get("speech_to_text_provider") not in {"local", "elevenlabs"}:
-        settings["speech_to_text_provider"] = "local"
+    if settings.get("speech_to_text_provider") not in {"local", "openai", "elevenlabs"}:
+        settings["speech_to_text_provider"] = "openai"
     if settings.get("elevenlabs_stt_model") not in {"scribe_v2", "scribe_v1"}:
         settings["elevenlabs_stt_model"] = "scribe_v2"
     try:
@@ -358,6 +364,13 @@ def favicon():
     if png.exists():
         return FileResponse(png)
     return Response(status_code=204)
+
+
+@app.post("/api/app/show", include_in_schema=False)
+def request_app_window():
+    """Ask the existing desktop process to restore its hidden SKATE window."""
+    APP_SHOW_REQUESTED.set()
+    return {"ok": True}
 
 
 def _sidebar_context() -> dict:
@@ -551,6 +564,83 @@ def _elevenlabs_transcribe(audio_bytes: bytes, filename: str, content_type: str,
         timeout=120,
     )
     return str(response.get("text", "")).strip()
+
+
+def _openai_transcribe(audio_bytes: bytes, filename: str, content_type: str, api_key: str, model_id: str) -> str:
+    """Transcribe a bounded recording with OpenAI's Audio API."""
+    response = _post_multipart(
+        "https://api.openai.com/v1/audio/transcriptions",
+        {"Authorization": f"Bearer {api_key}"},
+        {"model": model_id or "gpt-4o-mini-transcribe"},
+        {"file": {
+            "filename": filename or "recording.webm",
+            "content_type": content_type or "audio/webm",
+            "content": audio_bytes,
+        }},
+        timeout=120,
+    )
+    return str(response.get("text", "")).strip()
+
+
+def _pcm16_to_wav(pcm: bytes, sample_rate: int = 24000) -> bytes:
+    """Wrap mono 16-bit PCM returned by Realtime in a browser-playable WAV."""
+    buffer = BytesIO()
+    with wave.open(buffer, "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(sample_rate)
+        wav.writeframes(pcm)
+    return buffer.getvalue()
+
+
+async def _openai_realtime_speak(text: str, api_key: str, model: str, voice: str) -> bytes:
+    """Generate one low-latency spoken Spotter turn with GPT-Realtime mini."""
+    import websockets
+
+    url = f"wss://api.openai.com/v1/realtime?model={model or 'gpt-realtime-mini'}"
+    headers = {"Authorization": f"Bearer {api_key}"}
+    try:
+        connect = websockets.connect(url, additional_headers=headers, max_size=20 * 1024 * 1024)
+    except TypeError:  # websockets < 14
+        connect = websockets.connect(url, extra_headers=headers, max_size=20 * 1024 * 1024)
+    chunks: list[bytes] = []
+    async with connect as upstream:
+        await upstream.send(json.dumps({
+            "type": "session.update",
+            "session": {
+                "type": "realtime",
+                "model": model or "gpt-realtime-mini",
+                "output_modalities": ["audio"],
+                "audio": {
+                    "output": {
+                        "format": {"type": "audio/pcm", "rate": 24000},
+                        "voice": voice or "marin",
+                    }
+                },
+                "instructions": "Speak the supplied text naturally and exactly. Do not add commentary.",
+            },
+        }))
+        await upstream.send(json.dumps({
+            "type": "conversation.item.create",
+            "item": {
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_text", "text": f"Say exactly this:\n{text}"}],
+            },
+        }))
+        await upstream.send(json.dumps({"type": "response.create", "response": {"output_modalities": ["audio"]}}))
+        async for raw in upstream:
+            event = json.loads(raw if isinstance(raw, str) else raw.decode("utf-8"))
+            if event.get("type") == "response.output_audio.delta" and event.get("delta"):
+                chunks.append(base64.b64decode(event["delta"]))
+            elif event.get("type") == "error":
+                detail = event.get("error") or {}
+                raise ValueError(detail.get("message") or "OpenAI Realtime returned an error.")
+            elif event.get("type") == "response.done":
+                break
+    if not chunks:
+        raise ValueError("OpenAI Realtime returned no audio.")
+    return _pcm16_to_wav(b"".join(chunks))
 
 
 def _elevenlabs_list_voices(api_key: str) -> list[dict]:
@@ -2066,6 +2156,7 @@ def _perform_transcription(audio_bytes: bytes, filename: str, content_type: str,
     model_name = requested_model if requested_model in valid_whisper_models else settings.get("transcription_model", "base")
     stt_provider = str(settings.get("speech_to_text_provider", "local") or "local").strip().lower()
     el_key = settings.get("api_keys", {}).get("elevenlabs", "")
+    openai_key = settings.get("api_keys", {}).get("openai", "")
 
     if stt_provider == "elevenlabs":
         if not el_key:
@@ -2082,10 +2173,18 @@ def _perform_transcription(audio_bytes: bytes, filename: str, content_type: str,
             return {"ok": False, "error": f"ElevenLabs transcription failed: {e}"}
 
     if stt_provider == "openai":
-        return {
-            "ok": False,
-            "error": "OpenAI Speech-to-Text is selected, but this upload currently uses Local Whisper or ElevenLabs. Choose Local in Settings for offline transcription.",
-        }
+        if not openai_key:
+            return {"ok": False, "error": "OpenAI Speech-to-Text is selected, but no OpenAI API key is saved."}
+        stt_model = settings.get("openai_batch_transcription_model", "gpt-4o-mini-transcribe")
+        try:
+            report(15, "Sending recording to OpenAI")
+            transcript = _openai_transcribe(audio_bytes, filename, content_type, openai_key, stt_model)
+            report(98, "Finalizing transcript")
+            if transcript:
+                return {"ok": True, "transcript": transcript, "model": stt_model, "mode": "openai-transcribe"}
+            return {"ok": False, "error": "OpenAI returned an empty transcript."}
+        except (HTTPError, URLError, TimeoutError, OSError, ValueError, KeyError) as e:
+            return {"ok": False, "error": f"OpenAI transcription failed: {e}"}
 
     try:
         transcript = _local_whisper_transcribe(audio_bytes, filename, content_type, model_name, progress_callback=progress_callback)
@@ -2238,8 +2337,23 @@ async def speak_api(request: Request):
         return {"ok": False, "error": "No text to speak."}
 
     settings = _load_settings()
-    if settings.get("text_to_speech_provider") != "elevenlabs":
-        return {"ok": False, "error": "ElevenLabs TTS is not the selected provider."}
+    provider = settings.get("text_to_speech_provider")
+    if provider == "openai":
+        api_key = settings.get("api_keys", {}).get("openai", "")
+        if not api_key:
+            return {"ok": False, "error": "No OpenAI API key is saved."}
+        try:
+            audio = await _openai_realtime_speak(
+                text[:5000],
+                api_key,
+                settings.get("openai_realtime_model", "gpt-realtime-mini"),
+                settings.get("openai_realtime_voice", "marin"),
+            )
+        except (HTTPError, URLError, TimeoutError, OSError, ValueError, ImportError) as e:
+            return {"ok": False, "error": f"OpenAI Realtime voice failed. {e}"}
+        return Response(content=audio, media_type="audio/wav")
+    if provider != "elevenlabs":
+        return {"ok": False, "error": "Cloud speech is not the selected provider."}
     api_key = settings.get("api_keys", {}).get("elevenlabs", "")
     if not api_key:
         return {"ok": False, "error": "No ElevenLabs API key is saved."}
@@ -2287,6 +2401,8 @@ async def voice_config():
         "tts_provider": settings.get("text_to_speech_provider", "local"),
         "microphone": settings.get("microphone", "system-default"),
         "stt_provider": settings.get("speech_to_text_provider", "local"),
+        "openai_realtime_model": settings.get("openai_realtime_model", "gpt-realtime-mini"),
+        "openai_realtime_transcription_model": settings.get("openai_realtime_transcription_model", "gpt-realtime-whisper"),
     }
 
 
@@ -2458,8 +2574,8 @@ def spotter_live_page(request: Request):
     sidebar = _sidebar_context()
     settings = _load_settings()
     stt_provider = settings.get("speech_to_text_provider", "local")
-    if stt_provider not in {"local", "elevenlabs"}:
-        stt_provider = "local"
+    if stt_provider not in {"local", "openai", "elevenlabs"}:
+        stt_provider = "openai"
     return TEMPLATES.TemplateResponse(
         request,
         "spotter-live.html",
@@ -2471,6 +2587,9 @@ def spotter_live_page(request: Request):
             "stt_provider": stt_provider,
             "microphone": settings.get("microphone", "system-default"),
             "elevenlabs_key_present": bool(settings.get("api_keys", {}).get("elevenlabs")),
+            "openai_key_present": bool(settings.get("api_keys", {}).get("openai")),
+            "openai_realtime_model": settings.get("openai_realtime_model", "gpt-realtime-mini"),
+            "openai_realtime_transcription_model": settings.get("openai_realtime_transcription_model", "gpt-realtime-whisper"),
             **sidebar,
         },
     )
@@ -2642,6 +2761,81 @@ async def spotter_live_stt(ws: WebSocket):
             pass
 
 
+@app.websocket("/ws/spotter-live-openai-stt")
+async def spotter_live_openai_stt(ws: WebSocket):
+    """Keep the OpenAI key server-side while proxying live PCM transcription."""
+    await ws.accept()
+    settings = _load_settings()
+    api_key = settings.get("api_keys", {}).get("openai", "")
+    if not api_key:
+        await ws.send_text(json.dumps({"type": "error", "error": {"message": "No OpenAI API key is saved in Settings."}}))
+        await ws.close()
+        return
+    try:
+        import websockets
+    except ImportError:
+        await ws.send_text(json.dumps({"type": "error", "error": {"message": "The websockets package is missing."}}))
+        await ws.close()
+        return
+
+    model = settings.get("openai_realtime_transcription_model", "gpt-realtime-whisper")
+    delay = settings.get("openai_realtime_transcription_delay", "low")
+    url = f"wss://api.openai.com/v1/realtime?model={urllib.parse.quote(model)}"
+    headers = {"Authorization": f"Bearer {api_key}"}
+    try:
+        connect = websockets.connect(url, additional_headers=headers, max_size=20 * 1024 * 1024)
+    except TypeError:  # websockets < 14
+        connect = websockets.connect(url, extra_headers=headers, max_size=20 * 1024 * 1024)
+
+    try:
+        async with connect as upstream:
+            await upstream.send(json.dumps({
+                "type": "session.update",
+                "session": {
+                    "type": "transcription",
+                    "audio": {
+                        "input": {
+                            "format": {"type": "audio/pcm", "rate": 24000},
+                            "transcription": {"model": model, "language": "en", "delay": delay},
+                            "turn_detection": None,
+                        }
+                    },
+                },
+            }))
+
+            async def pump_up():
+                while True:
+                    raw = await ws.receive_text()
+                    message = json.loads(raw)
+                    if message.get("type") == "audio" and message.get("audio"):
+                        await upstream.send(json.dumps({"type": "input_audio_buffer.append", "audio": message["audio"]}))
+                    elif message.get("type") == "commit":
+                        await upstream.send(json.dumps({"type": "input_audio_buffer.commit"}))
+
+            async def pump_down():
+                async for raw in upstream:
+                    await ws.send_text(raw if isinstance(raw, str) else raw.decode("utf-8"))
+
+            tasks = [asyncio.create_task(pump_up()), asyncio.create_task(pump_down())]
+            try:
+                await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            finally:
+                for task in tasks:
+                    task.cancel()
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:  # noqa: BLE001
+        try:
+            await ws.send_text(json.dumps({"type": "error", "error": {"message": f"OpenAI Realtime transcription failed: {e}"}}))
+        except Exception:
+            pass
+    finally:
+        try:
+            await ws.close()
+        except Exception:
+            pass
+
+
 @app.get("/search", response_class=HTMLResponse)
 def search(
     request: Request,
@@ -2701,8 +2895,9 @@ def grind(
     entry_type: str | None = Query(default=None),
     date_from: str | None = Query(default=None),
     date_to: str | None = Query(default=None),
-    run: bool = Query(default=False),
+    run: str | None = Query(default=None),
 ):
+    run_requested = str(run or "").strip().lower() in {"1", "true", "yes", "on"}
     all_entries = load_all_entries()
     all_session_rows = session_stats(all_entries)
     active_session_rows = [row for row in all_session_rows if str(row.get("status", "active")).lower() != "inactive"]
@@ -2721,7 +2916,7 @@ def grind(
         date_to=date_to,
     )
     data = graph_data(entries)
-    grind_run = bool(run and session and session_allowed)
+    grind_run = bool(run_requested and session and session_allowed)
     insights = _grind_insights(entries, data) if grind_run else design_insights(entries, data)
     if grind_run:
         try:
@@ -2742,6 +2937,23 @@ def grind(
     export_url = "/grind/export?" + urlencode({k: v for k, v in export_params.items() if v})
     sidebar = _sidebar_context()
     sidebar["sessions"] = active_session_rows
+    selected_session_row = next(
+        (row for row in active_session_rows if row["key"] == session),
+        None,
+    )
+    if selected_session_row:
+        scope_title = selected_session_row["label"]
+        scope_description = (
+            "This map contains only active notes from this session. Its rails show "
+            "explicit evidence relationships and shared themes inside the session."
+        )
+    else:
+        scope_title = "All active sessions"
+        scope_description = (
+            f"This combined map contains active notes from {len(active_session_rows)} active "
+            "sessions. Rails can reveal explicit evidence relationships and shared themes "
+            "within or across sessions."
+        )
     import json
     return TEMPLATES.TemplateResponse(
         request,
@@ -2758,8 +2970,10 @@ def grind(
                 "date_to": date_to or "",
             },
             "grind_run": grind_run,
-            "grind_requires_session": bool(run and not session),
+            "grind_requires_session": bool(run_requested and not session),
             "export_url": export_url,
+            "scope_title": scope_title,
+            "scope_description": scope_description,
             **sidebar,
         },
     )
@@ -2866,13 +3080,18 @@ async def save_settings(request: Request):
     settings["spotter_style"] = str(form.get("spotter_style", settings.get("spotter_style", ""))).strip() or DEFAULT_SETTINGS["spotter_style"]
     settings["microphone"] = str(form.get("microphone", settings.get("microphone", "system-default"))).strip() or "system-default"
     settings["microphone_label"] = str(form.get("microphone_label", settings.get("microphone_label", ""))).strip()
-    stt_provider = str(form.get("speech_to_text_provider", settings.get("speech_to_text_provider", "local"))).strip()
-    settings["speech_to_text_provider"] = stt_provider if stt_provider in {"local", "elevenlabs"} else "local"
+    stt_provider = str(form.get("speech_to_text_provider", settings.get("speech_to_text_provider", "openai"))).strip()
+    settings["speech_to_text_provider"] = stt_provider if stt_provider in {"local", "openai", "elevenlabs"} else "openai"
     tts_provider = str(form.get("text_to_speech_provider", settings.get("text_to_speech_provider", "local"))).strip()
     settings["text_to_speech_provider"] = tts_provider if tts_provider in {"local", "openai", "elevenlabs"} else "local"
     settings["speak_responses_aloud"] = _checked(form.get("speak_responses_aloud"))
-    settings["tts_voice"] = str(form.get("tts_voice", settings.get("tts_voice", "alloy"))).strip() or "alloy"
-    settings["tts_model"] = str(form.get("tts_model", settings.get("tts_model", "tts-1"))).strip() or "tts-1"
+    settings["openai_realtime_model"] = "gpt-realtime-mini"
+    settings["openai_realtime_transcription_model"] = "gpt-realtime-whisper"
+    realtime_delay = str(form.get("openai_realtime_transcription_delay", settings.get("openai_realtime_transcription_delay", "low"))).strip()
+    settings["openai_realtime_transcription_delay"] = realtime_delay if realtime_delay in {"minimal", "low", "medium", "high", "xhigh"} else "low"
+    realtime_voice = str(form.get("openai_realtime_voice", settings.get("openai_realtime_voice", "marin"))).strip()
+    settings["openai_realtime_voice"] = realtime_voice if realtime_voice in {"marin", "cedar", "alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse"} else "marin"
+    settings["openai_batch_transcription_model"] = "gpt-4o-mini-transcribe"
     settings["elevenlabs_voice_id"] = str(form.get("elevenlabs_voice_id", settings.get("elevenlabs_voice_id", ""))).strip() or DEFAULT_SETTINGS["elevenlabs_voice_id"]
     settings["elevenlabs_tts_model"] = str(form.get("elevenlabs_tts_model", settings.get("elevenlabs_tts_model", ""))).strip() or DEFAULT_SETTINGS["elevenlabs_tts_model"]
     settings["elevenlabs_stt_model"] = str(form.get("elevenlabs_stt_model", settings.get("elevenlabs_stt_model", ""))).strip() or DEFAULT_SETTINGS["elevenlabs_stt_model"]
@@ -3162,15 +3381,36 @@ def _launch_with_tray(host: str, port: int, open_browser: bool, app_window: bool
     window_holder: dict = {}
     quitting = threading.Event()
 
-    def on_open(icon, item):
+    def show_window():
+        APP_SHOW_REQUESTED.clear()
         window = window_holder.get("window")
         if window is not None:
-            window.show()
-        else:
-            _open_skate(url, False)
+            try:
+                window.show()
+                try:
+                    window.restore()
+                except Exception:
+                    pass
+                return
+            except Exception:
+                pass
+        _open_skate(url, False)
+
+    def on_open(icon, item):
+        show_window()
+
+    def watch_show_requests():
+        while not quitting.is_set():
+            if APP_SHOW_REQUESTED.wait(timeout=0.5):
+                if quitting.is_set():
+                    return
+                show_window()
+
+    threading.Thread(target=watch_show_requests, daemon=True).start()
 
     def on_quit(icon, item):
         quitting.set()
+        APP_SHOW_REQUESTED.set()
         srv = server_holder.get("server")
         if srv is not None:
             srv.should_exit = True
@@ -3264,6 +3504,43 @@ def _run_no_tray(host: str, port: int, open_browser: bool, app_window: bool):
     uvicorn.run(app, host=host, port=port)
 
 
+def _acquire_single_instance() -> bool:
+    """Allow only one SKATE desktop process in the current Windows session."""
+    global _SINGLE_INSTANCE_MUTEX
+    if not sys.platform.startswith("win"):
+        return True
+    import ctypes
+
+    mutex = ctypes.windll.kernel32.CreateMutexW(
+        None,
+        False,
+        "Local\\NeraTech.SKATE.SingleInstance",
+    )
+    if not mutex:
+        return True
+    if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+        ctypes.windll.kernel32.CloseHandle(mutex)
+        return False
+    _SINGLE_INSTANCE_MUTEX = mutex  # Keep the handle alive for this process.
+    return True
+
+
+def _show_existing_instance(host: str, port: int) -> None:
+    """Signal the first SKATE process to restore its native window."""
+    try:
+        request = UrlRequest(
+            f"http://{host}:{port}/api/app/show",
+            data=b"{}",
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urlopen(request, timeout=2):
+            pass
+    except Exception:
+        # The first process may still be starting. It will open normally.
+        pass
+
+
 def main():
     parser = argparse.ArgumentParser(description="Run the SKATE UI")
     parser.add_argument("--host", default="127.0.0.1")
@@ -3292,6 +3569,10 @@ def main():
 
     open_browser = not args.no_browser
     app_window = not args.browser
+
+    if not args.reload and not _acquire_single_instance():
+        _show_existing_instance(args.host, args.port)
+        return
 
     if args.reload:
         # Reload mode does not play well with threaded tray, so fall back.

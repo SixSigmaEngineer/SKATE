@@ -103,9 +103,12 @@ const configuredWhisperModel = {{ transcription_model | tojson }};
 function updateSpotterSttControls() {
   const engineNote = document.getElementById("spotterSttEngineNote");
   const useElevenLabs = sttProvider === "elevenlabs";
+  const useOpenAI = sttProvider === "openai";
   if (engineNote) engineNote.textContent = useElevenLabs
     ? "Transcription: ElevenLabs Scribe v2 · change in Settings"
-    : "Transcription: Local Whisper · private and near-live · change in Settings";
+    : useOpenAI
+      ? "Transcription: OpenAI GPT-4o mini · change in Settings"
+      : "Transcription: Local Whisper · private and near-live · change in Settings";
 }
 fetch("/api/voice-config").then((r) => (r.ok ? r.json() : null)).then((c) => {
   if (c) {
@@ -190,7 +193,7 @@ async function speak(text) {
     statusLine.textContent = "Spoken replies are off — check 'Speak responses aloud' in Settings.";
     return;
   }
-  if (ttsProvider === "elevenlabs") {
+  if (ttsProvider === "openai" || ttsProvider === "elevenlabs") {
     try {
       const res = await fetch("/api/speak", {
         method: "POST",
@@ -506,6 +509,7 @@ resolveSession();
     if (!r.ok) { voiceState.textContent = "Voice: restart SKATE (stale server)"; voiceState.style.color = "#c0392b"; return; }
     const cfg = await r.json();
     if (!cfg.speak_aloud) { voiceState.textContent = "Voice: muted (enable in Settings)"; voiceState.style.color = "var(--color-muted, #7a869a)"; }
+    else if (cfg.tts_provider === "openai") { voiceState.textContent = "Voice: OpenAI GPT-Realtime mini ready"; voiceState.style.color = "#15994e"; }
     else if (cfg.tts_provider === "elevenlabs") { voiceState.textContent = "Voice: ElevenLabs ready"; voiceState.style.color = "#15994e"; }
     else { voiceState.textContent = "Voice: browser"; voiceState.style.color = "var(--color-muted, #7a869a)"; }
   } catch (e) {

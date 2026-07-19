@@ -91,17 +91,39 @@
     <div class="two">
       <label>Speech-to-Text engine
         <select name="speech_to_text_provider" id="sttProvider">
-          <option value="local" {% if current_settings.speech_to_text_provider not in ['elevenlabs'] %}selected{% endif %}>Local Whisper — private and near-live</option>
+          <option value="openai" {% if current_settings.speech_to_text_provider == 'openai' %}selected{% endif %}>OpenAI Realtime Whisper — live</option>
+          <option value="local" {% if current_settings.speech_to_text_provider == 'local' %}selected{% endif %}>Local Whisper — private and near-live</option>
           <option value="elevenlabs" {% if current_settings.speech_to_text_provider == 'elevenlabs' %}selected{% endif %}>ElevenLabs Scribe — cloud</option>
         </select>
       </label>
       <label>Text-to-Speech
-        <select name="text_to_speech_provider">
-          {% for provider in ["local", "openai", "elevenlabs"] %}
-            <option value="{{ provider }}" {% if current_settings.text_to_speech_provider == provider %}selected{% endif %}>{{ provider }}</option>
-          {% endfor %}
+        <select name="text_to_speech_provider" id="ttsProvider">
+          <option value="openai" {% if current_settings.text_to_speech_provider == 'openai' %}selected{% endif %}>OpenAI GPT-Realtime mini</option>
+          <option value="local" {% if current_settings.text_to_speech_provider == 'local' %}selected{% endif %}>Windows local voice</option>
+          <option value="elevenlabs" {% if current_settings.text_to_speech_provider == 'elevenlabs' %}selected{% endif %}>ElevenLabs</option>
         </select>
       </label>
+    </div>
+    <div id="openAiVoiceSettings">
+      <div id="openAiTtsSettings">
+        <label>OpenAI voice
+          <select name="openai_realtime_voice">
+            {% for voice in ["marin", "cedar", "alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse"] %}
+              <option value="{{ voice }}" {% if current_settings.openai_realtime_voice == voice %}selected{% endif %}>{{ voice }}</option>
+            {% endfor %}
+          </select>
+        </label>
+      </div>
+      <div id="openAiSttSettings">
+        <label>Live transcription delay
+          <select name="openai_realtime_transcription_delay">
+            {% for delay in ["minimal", "low", "medium", "high", "xhigh"] %}
+              <option value="{{ delay }}" {% if current_settings.openai_realtime_transcription_delay == delay %}selected{% endif %}>{{ delay }}</option>
+            {% endfor %}
+          </select>
+        </label>
+      </div>
+      <p class="muted">OpenAI uses GPT-Realtime Whisper for live captions and GPT-Realtime mini for Spotter talk-back with the same saved OpenAI key. OpenAI does not add speaker labels here.</p>
     </div>
     <div id="localSttSettings">
       <label>Local Whisper model
@@ -123,38 +145,36 @@
       <p class="muted">Spotter Live automatically uses Scribe Realtime for live transcription and speaker labels.</p>
     </div>
     <label><input type="checkbox" name="speak_responses_aloud" {% if current_settings.speak_responses_aloud %}checked{% endif %}> Speak responses aloud</label>
-    <div class="two">
-      <label>TTS voice<input name="tts_voice" value="{{ current_settings.tts_voice or 'alloy' }}"></label>
-      <label>TTS model<input name="tts_model" value="{{ current_settings.tts_model or 'tts-1' }}"></label>
-    </div>
 
-    <h3>ElevenLabs</h3>
-    <p class="muted">One ElevenLabs key powers both Speech-to-Text (Scribe) and Text-to-Speech. Select <code>elevenlabs</code> above to use it. Find your voice ID in the ElevenLabs Voice Lab.</p>
-    <label>ElevenLabs API key
-      <input name="elevenlabs_api_key" type="password" placeholder="{% if current_settings.api_key_present['elevenlabs'] %}Saved{% else %}Not saved{% endif %}">
-    </label>
-    <label><input type="checkbox" name="clear_elevenlabs_api_key"> Clear saved ElevenLabs key</label>
-    <div class="two">
-      <label>Voice
-        <div class="voice-picker" id="elVoicePicker">
-          <input type="text" id="elVoiceSearch" placeholder="Choose or search a voice" autocomplete="off">
-          <input type="hidden" name="elevenlabs_voice_id" id="elVoiceId" value="{{ current_settings.elevenlabs_voice_id or '' }}">
-          <div class="voice-menu" id="elVoiceMenu" hidden></div>
-        </div>
+    <div id="elevenLabsSettings" hidden>
+      <h3>ElevenLabs</h3>
+      <p class="muted">Optional: use ElevenLabs for Scribe speaker labels or ElevenLabs voices.</p>
+      <label>ElevenLabs API key
+        <input name="elevenlabs_api_key" type="password" placeholder="{% if current_settings.api_key_present['elevenlabs'] %}Saved{% else %}Not saved{% endif %}">
       </label>
-      <label>TTS model
-        <input name="elevenlabs_tts_model" list="elTtsModels" value="{{ current_settings.elevenlabs_tts_model or '' }}" placeholder="eleven_flash_v2_5">
-        <datalist id="elTtsModels">
-          <option value="eleven_flash_v2_5">Flash v2.5 - fastest ~75ms (best for live)</option>
-          <option value="eleven_multilingual_v2">Multilingual v2 - premium quality</option>
-          <option value="eleven_v3">Eleven v3 - most expressive</option>
-        </datalist>
-      </label>
-    </div>
-    <div class="toolbar">
-      <button class="button" type="button" id="elLoadVoicesBtn">Load my voices</button>
-      <button class="button" type="button" id="elTestBtn">Test voice</button>
-      <span class="muted" id="elTestStatus">Load my voices pulls your account's voices into the Voice ID list. Test plays a short sample.</span>
+      <label><input type="checkbox" name="clear_elevenlabs_api_key"> Clear saved ElevenLabs key</label>
+      <div class="two">
+        <label>Voice
+          <div class="voice-picker" id="elVoicePicker">
+            <input type="text" id="elVoiceSearch" placeholder="Choose or search a voice" autocomplete="off">
+            <input type="hidden" name="elevenlabs_voice_id" id="elVoiceId" value="{{ current_settings.elevenlabs_voice_id or '' }}">
+            <div class="voice-menu" id="elVoiceMenu" hidden></div>
+          </div>
+        </label>
+        <label>TTS model
+          <input name="elevenlabs_tts_model" list="elTtsModels" value="{{ current_settings.elevenlabs_tts_model or '' }}" placeholder="eleven_flash_v2_5">
+          <datalist id="elTtsModels">
+            <option value="eleven_flash_v2_5">Flash v2.5 - fastest ~75ms (best for live)</option>
+            <option value="eleven_multilingual_v2">Multilingual v2 - premium quality</option>
+            <option value="eleven_v3">Eleven v3 - most expressive</option>
+          </datalist>
+        </label>
+      </div>
+      <div class="toolbar">
+        <button class="button" type="button" id="elLoadVoicesBtn">Load my voices</button>
+        <button class="button" type="button" id="elTestBtn">Test voice</button>
+        <span class="muted" id="elTestStatus">Load my voices pulls your account's voices into the Voice ID list. Test plays a short sample.</span>
+      </div>
     </div>
   </section>
 
@@ -175,15 +195,30 @@
   <script>
   (() => {
     const provider = document.getElementById("sttProvider");
+    const ttsProvider = document.getElementById("ttsProvider");
     const localSettings = document.getElementById("localSttSettings");
     const elevenLabsSettings = document.getElementById("elevenLabsSttSettings");
-    if (!provider || !localSettings || !elevenLabsSettings) return;
+    const elevenLabsAccountSettings = document.getElementById("elevenLabsSettings");
+    const openAiSettings = document.getElementById("openAiVoiceSettings");
+    const openAiSttSettings = document.getElementById("openAiSttSettings");
+    const openAiTtsSettings = document.getElementById("openAiTtsSettings");
+    if (!provider || !ttsProvider || !localSettings || !elevenLabsSettings || !elevenLabsAccountSettings || !openAiSettings || !openAiSttSettings || !openAiTtsSettings) return;
     const update = () => {
-      const useElevenLabs = provider.value === "elevenlabs";
-      localSettings.hidden = useElevenLabs;
-      elevenLabsSettings.hidden = !useElevenLabs;
+      const useElevenLabsStt = provider.value === "elevenlabs";
+      const useElevenLabs = useElevenLabsStt || ttsProvider.value === "elevenlabs";
+      const useLocal = provider.value === "local";
+      const useOpenAIStt = provider.value === "openai";
+      const useOpenAITts = ttsProvider.value === "openai";
+      const useOpenAI = useOpenAIStt || useOpenAITts;
+      localSettings.hidden = !useLocal;
+      elevenLabsSettings.hidden = !useElevenLabsStt;
+      elevenLabsAccountSettings.hidden = !useElevenLabs;
+      openAiSettings.hidden = !useOpenAI;
+      openAiSttSettings.hidden = !useOpenAIStt;
+      openAiTtsSettings.hidden = !useOpenAITts;
     };
     provider.addEventListener("change", update);
+    ttsProvider.addEventListener("change", update);
     update();
   })();
   </script>
