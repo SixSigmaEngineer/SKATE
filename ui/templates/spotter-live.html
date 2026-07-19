@@ -98,6 +98,7 @@ let recognition = null;     // room SR (browser engine)
 let ws = null;              // realtime socket (elevenlabs engine)
 let audioCtx = null, processor = null, micStream = null;
 let openAiCommitTimer = null;
+let openAiConnectionError = "";
 const openAiDeltas = new Map();
 let localStream = null, localRecorder = null, localChunkTimer = null, localCountdownTimer = null;
 let localQueue = [], localQueueBusy = false;
@@ -374,6 +375,7 @@ function stopLocalEngine() {
 
 // ---------- OpenAI realtime transcription (desktop-safe) ----------
 async function startOpenAIEngine() {
+  openAiConnectionError = "";
   openAiDeltas.clear();
   try {
     micStream = await openConfiguredMicrophone();
@@ -398,10 +400,15 @@ async function startOpenAIEngine() {
     } else if (msg.type === "error") {
       const detail = msg.error || {};
       // Empty/short commits can occur during room silence; keep the ear alive.
-      if (!String(detail.code || "").includes("buffer")) setStatus(detail.message || "OpenAI Realtime transcription error.", false);
+      if (!String(detail.code || "").includes("buffer")) {
+        openAiConnectionError = detail.message || "OpenAI Realtime transcription error.";
+        setStatus(openAiConnectionError, false);
+      }
     }
   };
-  ws.onclose = () => { if (roomActive) setStatus("OpenAI Realtime connection closed.", false); };
+  ws.onclose = () => {
+    if (roomActive && !openAiConnectionError) setStatus("OpenAI Realtime connection closed unexpectedly.", false);
+  };
 
   audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
   const source = audioCtx.createMediaStreamSource(micStream);

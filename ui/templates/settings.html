@@ -40,15 +40,11 @@
         </select>
       </label>
     </div>
-    <div class="card">
-      <strong>GRIND reasoning engine: GPT-5.6 Sol · high reasoning · OpenAI Responses API</strong>
-      <p class="muted">This route is fixed in code for the hackathon. GRIND uses GPT-5.6 for the meaningful reasoning task: synthesizing active workshop evidence into traceable pain points, How-Might-We prompts, and solution starters.</p>
-    </div>
+    <p class="muted"><strong>GRIND uses the General model and reasoning selections above</strong> through the OpenAI Responses API. Spotter can use its own lower-latency settings.</p>
     <div class="two">
       <label>Max tokens<input name="max_tokens" type="number" min="128" max="16000" step="128" value="{{ current_settings.max_tokens }}"></label>
       <label>OpenAI Base URL<input name="openai_base_url" value="{{ current_settings.openai_base_url or 'https://api.openai.com/v1' }}"></label>
     </div>
-    <label><input type="checkbox" name="use_ai_synthesis" {% if current_settings.use_ai_synthesis %}checked{% endif %}> Use GPT-5.6 synthesis in GRIND</label>
     <label>OpenAI API key
       <input name="openai_api_key" type="password" placeholder="{% if current_settings.api_key_present['openai'] %}Saved{% else %}Not saved{% endif %}">
     </label>

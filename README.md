@@ -85,7 +85,7 @@ The release supports both local MCP access and the hosted ChatGPT Work connectio
 ## Six core capabilities
 
 - **Governed local memory** - human-readable Markdown with YAML metadata, active/inactive governance, themes, provenance, and typed relationships such as `supports`, `contradicts`, `causes`, `leads_to`, and `references`.
-- **Meaningful GPT-5.6 reasoning** - GRIND is explicitly pinned to GPT-5.6 with high reasoning effort for cross-note evidence synthesis, while Spotter uses a faster GPT-5.6 configuration for live facilitation.
+- **Meaningful GPT-5.6 reasoning** - GRIND uses the user-selected General GPT-5.6 model and reasoning level for cross-note evidence synthesis, while Spotter can use a separate faster configuration for live facilitation.
 - **Evidence-backed retrieval** - weighted lexical search plus optional local semantic embeddings retrieves a small, relevant evidence set instead of repeatedly loading a complete vault or transcript.
 - **Spotter and Spotter Live** - capture manual notes, listen to a room with OpenAI live transcription, and hear Spotter respond through GPT-Realtime mini. Local Whisper provides a private fallback; ElevenLabs remains optional for realtime speaker labels.
 - **The GRIND** - explore memory as a 2D/3D graph, identify patterns across a session, generate IDEO-style outputs, trace results to source notes, and export the full ranked synthesis to Excel.
@@ -137,7 +137,7 @@ GPT-5.6 is used where that reasoning quality matters most:
 
 The implementation is deliberately visible in [`ui/app.py`](ui/app.py):
 
-- `_grind_gpt56_settings()` fixes GRIND to `gpt-5.6` with high reasoning effort.
+- `_grind_settings()` routes GRIND through the selected General GPT-5.6 model and reasoning effort.
 - `_grind_insights()` sends the structured synthesis request through the OpenAI Responses API.
 - Spotter defaults to the GPT-5.6 family with a lower-latency reasoning setting for live interaction.
 - OpenRouter and local chat-model routing are intentionally excluded from this hackathon build, making the GPT-5.6 evaluation path unambiguous.
@@ -195,7 +195,7 @@ Available tools:
 | `get_grind_outputs` | Retrieve the most recent design-thinking synthesis |
 | `search` / `fetch` | Compatibility tools for ChatGPT knowledge and research surfaces |
 
-This architecture reduces repeated context because agents retrieve Top-K evidence instead of whole transcripts. On the committed demo vault, the test query `families repeat their story` returned three evidence excerpts estimated at 378 tokens instead of approximately 4,337 tokens for all eligible notes, an estimated 91.3% context reduction for that query. This is a query-level estimate, not a universal savings claim.
+This architecture reduces repeated context because agents retrieve Top-K evidence instead of whole transcripts. On the committed demo vault, the query `families repeat their story`, scoped to the 13-note Harborlight service-access session with `top_k=3`, returned three evidence excerpts estimated at 378 tokens instead of approximately 2,412 tokens for the eligible session notes: an estimated 84.4% context reduction for that query. Results include their memory IDs, source session and type, themes, tags, structured capture signals, and relationship counts; `trace_evidence` returns the typed supporting, conflicting, causal, and reference links. This is a deterministic lexical-mode, query-level estimate—not a universal token-savings claim or a model-billing measurement.
 
 ### Connect SKATE memory to an agent
 

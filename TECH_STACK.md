@@ -100,7 +100,7 @@ A `--browser` flag opens it in the default browser instead, and `--reload` runs 
 
 ## AI: language models
 
-SKATE's hackathon build uses one deliberate LLM path: **OpenAI GPT-5.6 through the Responses API**. Spotter can use Sol, Terra, or Luna with an explicit reasoning level. GRIND is pinned in code to **GPT-5.6 Sol with high reasoning** because synthesis across multiple pieces of workshop evidence is the product's central quality-first reasoning task.
+SKATE's hackathon build uses one deliberate LLM path: **OpenAI GPT-5.6 through the Responses API**. The General model and reasoning selections route GRIND through Sol, Terra, or Luna at the chosen effort level. Spotter can use a separate GPT-5.6 model and reasoning level when lower latency is preferred during live facilitation.
 
 Every Spotter response is built from a fixed base persona + a per-stance instruction + retrieved session notes, and returns structured JSON (spoken response, title, evidence, insights, recommendations, actions, questions, relationships).
 
@@ -154,4 +154,4 @@ mcp                 # official Model Context Protocol SDK
 - **File-based, not database-backed** — the vault is the product's durable layer; markdown guarantees longevity and portability.
 - **Server-rendered + vanilla JS** — zero front-end build complexity; anyone with Python can run it.
 - **Hand-written WebGL** — full control over the "skate the rails" aesthetic without a heavyweight 3D dependency.
-- **Deliberate model routing** — GPT-5.6 Terra/low reasoning supports responsive Spotter interaction; GPT-5.6 Sol/high reasoning performs the deeper GRIND synthesis. Local Whisper remains available for private transcription, but it is not an LLM fallback.
+- **Deliberate model routing** — GRIND inherits the configured General GPT-5.6 model and reasoning level, while Spotter can use its own lower-latency GPT-5.6 route. Local Whisper remains available for private transcription, but it is not an LLM fallback.

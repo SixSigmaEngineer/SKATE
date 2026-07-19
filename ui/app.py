@@ -85,8 +85,6 @@ OPENAI_MODEL_OPTIONS = [
     {"id": "gpt-5.6-luna", "label": "GPT-5.6 Luna — efficient"},
 ]
 MODEL_OPTIONS = {"openai": OPENAI_MODEL_OPTIONS}
-GRIND_GPT56_MODEL = "gpt-5.6"
-GRIND_GPT56_REASONING_EFFORT = "high"
 
 DEFAULT_SETTINGS = {
     "provider": "openai",
@@ -95,10 +93,9 @@ DEFAULT_SETTINGS = {
     "spotter_reasoning_effort": "low",
     "reasoning_effort": "medium",
     "api_keys": {"openai": "", "elevenlabs": ""},
-    "use_ai_synthesis": False,
     "transcription_model": "base",
     "openai_base_url": "https://api.openai.com/v1",
-    "max_tokens": 1800,
+    "max_tokens": 1920,
     "spotter_name": "Spotter",
     "spotter_subtitle": "Workshop coach",
     "spotter_persona": """You are Spotter, an expert facilitation co-pilot for consultants and workshop teams. You support facilitators and project teams live during workshops.
@@ -288,6 +285,7 @@ def _load_settings() -> dict:
         "grind_provider",
         "grind_model",
         "grind_reasoning_effort",
+        "use_ai_synthesis",
         "lmstudio_base_url",
     ):
         settings.pop(deprecated_key, None)
@@ -326,9 +324,9 @@ def _load_settings() -> dict:
     if settings.get("elevenlabs_stt_model") not in {"scribe_v2", "scribe_v1"}:
         settings["elevenlabs_stt_model"] = "scribe_v2"
     try:
-        settings["max_tokens"] = max(128, min(16000, int(settings.get("max_tokens", 1800))))
+        settings["max_tokens"] = max(128, min(16000, int(settings.get("max_tokens", 1920))))
     except (TypeError, ValueError):
-        settings["max_tokens"] = 1800
+        settings["max_tokens"] = 1920
     try:
         settings["streamdeck_port"] = max(1, min(65535, int(settings.get("streamdeck_port", 3030))))
     except (TypeError, ValueError):
@@ -697,12 +695,10 @@ def _feature_settings(settings: dict, feature: str) -> dict:
     return eff
 
 
-def _grind_gpt56_settings(settings: dict) -> dict:
-    """Pin the hackathon's core reasoning task to GPT-5.6 Sol/high reasoning."""
+def _grind_settings(settings: dict) -> dict:
+    """Use the configured General GPT-5.6 model and reasoning for GRIND."""
     eff = dict(settings)
     eff["provider"] = "openai"
-    eff["model"] = GRIND_GPT56_MODEL
-    eff["reasoning_effort"] = GRIND_GPT56_REASONING_EFFORT
     return eff
 
 
@@ -710,7 +706,7 @@ def _call_llm(settings: dict, prompt: str, model: str | None = None) -> str:
     provider = settings.get("provider", "openai")
     model = model or settings["model"]
     api_key = settings.get("api_keys", {}).get(provider, "")
-    max_tokens = int(settings.get("max_tokens", 1800))
+    max_tokens = int(settings.get("max_tokens", 1920))
     if provider != "openai":
         raise ValueError("SKATE currently supports OpenAI GPT-5.6 only.")
     if not api_key:
@@ -768,18 +764,16 @@ def _call_llm(settings: dict, prompt: str, model: str | None = None) -> str:
 
 def _grind_insights(entries, graph: dict) -> dict:
     settings = _load_settings()
-    grind_settings = _grind_gpt56_settings(settings)
+    grind_settings = _grind_settings(settings)
     local = design_insights(entries, graph)
     local["mode"] = "local"
     local["provider"] = "openai"
-    local["model"] = GRIND_GPT56_MODEL
-    local["reasoning_effort"] = GRIND_GPT56_REASONING_EFFORT
+    local["model"] = grind_settings.get("model", "gpt-5.6")
+    local["reasoning_effort"] = grind_settings.get("reasoning_effort", "medium")
     local["error"] = ""
 
-    if not settings.get("use_ai_synthesis"):
-        return local
     if not _llm_available(grind_settings):
-        local["error"] = "GPT-5.6 synthesis is on, but no OpenAI API key is saved."
+        local["error"] = "No OpenAI API key is saved; showing local synthesis."
         return local
 
     try:
@@ -787,8 +781,8 @@ def _grind_insights(entries, graph: dict) -> dict:
         ai = _normalize_ai_insights(_extract_json_object(text), entries)
         ai["mode"] = "ai"
         ai["provider"] = "openai"
-        ai["model"] = GRIND_GPT56_MODEL
-        ai["reasoning_effort"] = GRIND_GPT56_REASONING_EFFORT
+        ai["model"] = grind_settings.get("model", "gpt-5.6")
+        ai["reasoning_effort"] = grind_settings.get("reasoning_effort", "medium")
         ai["error"] = ""
         ai["marker_counts"] = local.get("marker_counts", {})
         return ai
@@ -2780,7 +2774,9 @@ async def spotter_live_openai_stt(ws: WebSocket):
 
     model = settings.get("openai_realtime_transcription_model", "gpt-realtime-whisper")
     delay = settings.get("openai_realtime_transcription_delay", "low")
-    url = f"wss://api.openai.com/v1/realtime?model={urllib.parse.quote(model)}"
+    # Transcription-only sessions use the Realtime transcription intent.
+    # The speech-to-text model belongs in session.update, not in the socket URL.
+    url = "wss://api.openai.com/v1/realtime?intent=transcription"
     headers = {"Authorization": f"Bearer {api_key}"}
     try:
         connect = websockets.connect(url, additional_headers=headers, max_size=20 * 1024 * 1024)
@@ -2925,8 +2921,9 @@ def grind(
             pass
     insights.setdefault("mode", "local")
     insights.setdefault("provider", "openai")
-    insights.setdefault("model", GRIND_GPT56_MODEL)
-    insights.setdefault("reasoning_effort", GRIND_GPT56_REASONING_EFFORT)
+    general_settings = _load_settings()
+    insights.setdefault("model", general_settings.get("model", "gpt-5.6"))
+    insights.setdefault("reasoning_effort", general_settings.get("reasoning_effort", "medium"))
     insights.setdefault("error", "")
     export_params = {
         "session": session or "",
@@ -3064,12 +3061,11 @@ async def save_settings(request: Request):
     ):
         value = str(form.get(key, settings.get(key, fallback))).strip().lower()
         settings[key] = value if value in reasoning_efforts else fallback
-    settings["use_ai_synthesis"] = _checked(form.get("use_ai_synthesis"))
     settings["openai_base_url"] = str(form.get("openai_base_url", settings.get("openai_base_url", ""))).strip() or "https://api.openai.com/v1"
     try:
-        settings["max_tokens"] = max(128, min(16000, int(form.get("max_tokens", settings.get("max_tokens", 1800)))))
+        settings["max_tokens"] = max(128, min(16000, int(form.get("max_tokens", settings.get("max_tokens", 1920)))))
     except (TypeError, ValueError):
-        settings["max_tokens"] = 1800
+        settings["max_tokens"] = 1920
     transcription_model = form.get("transcription_model", settings.get("transcription_model", "base"))
     valid_whisper_models = {m["id"] for m in WHISPER_MODELS}
     settings["transcription_model"] = transcription_model if transcription_model in valid_whisper_models else "base"

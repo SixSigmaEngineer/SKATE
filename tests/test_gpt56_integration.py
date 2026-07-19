@@ -18,7 +18,7 @@ class GPT56IntegrationTests(unittest.TestCase):
             "api_keys": {"openai": "test-key"},
             "openai_base_url": "https://api.openai.com/v1",
             "temperature": 0.7,
-            "max_tokens": 1800,
+            "max_tokens": 1920,
             "reasoning_effort": "medium",
         }
         settings.update(overrides)
@@ -47,22 +47,22 @@ class GPT56IntegrationTests(unittest.TestCase):
         self.assertEqual(spotter["model"], "gpt-5.6-terra")
         self.assertEqual(spotter["reasoning_effort"], "low")
 
-    def test_grind_is_pinned_to_gpt56_sol_high_reasoning(self):
+    def test_grind_inherits_general_model_and_reasoning(self):
         settings = self._settings(
             model="gpt-5.6-luna",
-            reasoning_effort="none",
+            reasoning_effort="xhigh",
             grind_model="another-model",
             grind_reasoning_effort="none",
         )
 
-        grind = app._grind_gpt56_settings(settings)
+        grind = app._grind_settings(settings)
 
         self.assertEqual(grind["provider"], "openai")
-        self.assertEqual(grind["model"], "gpt-5.6")
-        self.assertEqual(grind["reasoning_effort"], "high")
+        self.assertEqual(grind["model"], "gpt-5.6-luna")
+        self.assertEqual(grind["reasoning_effort"], "xhigh")
 
-    def test_grind_insights_calls_pinned_gpt56_route(self):
-        settings = self._settings(use_ai_synthesis=True)
+    def test_grind_insights_calls_selected_general_route(self):
+        settings = self._settings(model="gpt-5.6-terra", reasoning_effort="high")
         response = (
             '{"pains":[{"title":"Repeated handoff","summary":"People repeat context."}],'
             '"hmw_prompts":[{"prompt":"How might we carry context forward?","source_title":"Handoff"}],'
@@ -75,10 +75,10 @@ class GPT56IntegrationTests(unittest.TestCase):
             result = app._grind_insights([], {"nodes": [], "links": [], "stats": {}})
 
         routed_settings = call.call_args.args[0]
-        self.assertEqual(routed_settings["model"], "gpt-5.6")
+        self.assertEqual(routed_settings["model"], "gpt-5.6-terra")
         self.assertEqual(routed_settings["reasoning_effort"], "high")
         self.assertEqual(result["mode"], "ai")
-        self.assertEqual(result["model"], "gpt-5.6")
+        self.assertEqual(result["model"], "gpt-5.6-terra")
         self.assertEqual(len(result["pains"]), 1)
         self.assertEqual(len(result["hmw_prompts"]), 1)
         self.assertEqual(len(result["solutions"]), 1)
