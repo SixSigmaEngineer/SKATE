@@ -30,9 +30,9 @@
 </p>
 
 <p align="center">
-  <strong>OpenAI Build Week | Work &amp; Productivity</strong><br>
-  Demo video: <em>public YouTube link coming before submission</em> |
-  Devpost: <em>project page link coming before submission</em>
+  <strong><a href="https://openai.devpost.com/">OpenAI Build Week</a> | Work &amp; Productivity</strong><br>
+  <a href="https://youtu.be/G86qeesdrYk?si=SRxlilmpwBdR73SY">Demo video</a> |
+  <a href="https://openai.devpost.com/">Devpost</a>
 </p>
 
 <!--
