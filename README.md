@@ -32,15 +32,14 @@
 <p align="center">
   <strong>OpenAI Build Week | Work &amp; Productivity</strong><br>
   Demo video: <em>public YouTube link coming before submission</em> |
-  Devpost: <em>project page link coming before submission</em> |
-  <a href="docs/UI-GUIDE.md">Documentation</a>
+  Devpost: <em>project page link coming before submission</em>
 </p>
 
 <!--
 HERO GIF SLOT
-1. Save the final workflow GIF as docs/images/skate-workflow.gif.
+1. Save the final workflow GIF as branding-images/skate-workflow.gif.
 2. Replace this comment with:
-   <p align="center"><img src="docs/images/skate-workflow.gif" alt="SKATE workflow demo" width="900"></p>
+   <p align="center"><img src="branding-images/skate-workflow.gif" alt="SKATE workflow demo" width="900"></p>
 -->
 
 > *You can't vibe code personality.* SKATE keeps the human judgment, context, and lived experience in the room while AI does the work of organizing evidence and turning it into action.
@@ -198,7 +197,12 @@ Available tools:
 
 This architecture reduces repeated context because agents retrieve Top-K evidence instead of whole transcripts. On the committed demo vault, the test query `families repeat their story` returned three evidence excerpts estimated at 378 tokens instead of approximately 4,337 tokens for all eligible notes, an estimated 91.3% context reduction for that query. This is a query-level estimate, not a universal savings claim.
 
-Connection instructions, privacy boundaries, demo prompts, and the ChatGPT Work tunnel path are documented in [`docs/MCP-CONNECTION.md`](docs/MCP-CONNECTION.md).
+### Connect SKATE memory to an agent
+
+- **Installed app:** select **Connect SKATE memory to Codex and ChatGPT desktop** in the installer, or run `Configure SKATE MCP for Codex.bat` from the installation folder. Restart the desktop client and use `/mcp` to confirm that `skate` is connected.
+- **Source checkout:** run `Configure SKATE MCP for Codex.bat` after the Python environment has been created by `Start SKATE.bat`.
+- **ChatGPT Work/web:** run `Start SKATE MCP HTTP.bat`, keep the endpoint private at `http://127.0.0.1:8766/mcp`, and connect it through an authenticated HTTPS or OpenAI Secure MCP Tunnel. Never expose the unauthenticated local endpoint directly to the internet.
+- **Test prompts:** ask the agent to list active sessions, search for bounded evidence, trace relationships around a pain point, or retrieve the latest GRIND output. MCP returns only requested governed evidence; it does not upload the full vault by default.
 
 ## Spotter: an AI workshop agent with an HMI
 

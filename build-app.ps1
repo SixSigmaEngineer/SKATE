@@ -138,8 +138,8 @@ Copy-Item -LiteralPath (Join-Path $Root "demo-vault\sessions")      -Destination
 Copy-Item -LiteralPath (Join-Path $Root "demo-vault\INDEX.md")      -Destination (Join-Path $Seed "INDEX.md") -Force
 Copy-Item -LiteralPath (Join-Path $Root "templates")                -Destination (Join-Path $Seed "templates") -Recurse -Force
 
-# Optional documentation and skills ship with the app when present.
-foreach ($name in @("docs", "skills")) {
+# Optional skills ship with the app when present.
+foreach ($name in @("skills")) {
     $SourceDir = Join-Path $Root $name
     if (Test-Path -LiteralPath $SourceDir) {
         Copy-Item -LiteralPath $SourceDir -Destination (Join-Path $AppDir $name) -Recurse -Force

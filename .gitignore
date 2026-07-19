@@ -50,6 +50,7 @@ embeddings.json
 .cache/
 models/whisper/*.pt
 tools/ffmpeg.exe
+Push SKATE to GitHub.bat
 
 # ─── OS / editor cruft ────────────────────────────────────────
 .DS_Store

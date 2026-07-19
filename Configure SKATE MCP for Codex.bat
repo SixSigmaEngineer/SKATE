@@ -31,7 +31,7 @@ if not defined CODEX_EXE for /f "delims=" %%I in ('where codex 2^>nul') do if no
 if not defined CODEX_EXE (
     echo Codex CLI was not found on PATH.
     echo You can still add SKATE from ChatGPT desktop Settings ^> MCP servers.
-    echo See docs\MCP-CONNECTION.md for the exact values.
+    echo See the MCP section in README.md for the exact values.
     goto :fail
 )
 
@@ -48,7 +48,7 @@ if exist "%SKATE_MCP_EXE%" (
 if errorlevel 1 (
     echo.
     echo Codex could not save the MCP configuration.
-    echo See docs\MCP-CONNECTION.md for manual setup.
+    echo See the MCP section in README.md for manual setup.
     goto :fail
 )
 
