@@ -76,6 +76,7 @@ flowchart LR
 | Local Whisper and optional ElevenLabs speaker diarization | Working |
 | 2D/3D knowledge graph and Excel export | Working |
 | GPT-5.6-powered GRIND synthesis through the OpenAI Responses API | Working |
+| The Lineup for flexible, session-linked, and recurring Standard Work actions | Working |
 | Read-only MCP server for local Codex and ChatGPT desktop clients | Working |
 | Secure MCP Tunnel / hosted ChatGPT Work connection and recorded demo | **Working; included in releases** |
 | Inno Setup installer with bundled `SKATE-MCP.exe` | **Working; included in releases** |
@@ -89,6 +90,7 @@ The release supports both local MCP access and the hosted ChatGPT Work connectio
 - **Evidence-backed retrieval** - weighted lexical search plus optional local semantic embeddings retrieves a small, relevant evidence set instead of repeatedly loading a complete vault or transcript.
 - **Spotter and Spotter Live** - capture manual notes, listen to a room with OpenAI live transcription, and hear Spotter respond through GPT-Realtime mini. Local Whisper provides a private fallback; ElevenLabs remains optional for realtime speaker labels.
 - **The GRIND** - explore memory as a 2D/3D graph, identify patterns across a session, generate IDEO-style outputs, trace results to source notes, and export the full ranked synthesis to Excel.
+- **The Lineup** - manage flexible or session-linked Action Items, mark completed work as Landed, maintain daily/weekly/monthly Standard Work, and promote `#A` bullets from ordinary notes into traceable checklist items.
 - **A physical workshop interface** - an Elgato Stream Deck Neo and a custom skateboard-wheel microphone puck give the agent a practical human-machine interface in the room.
 
 ## Why SKATE is different
@@ -102,6 +104,7 @@ The release supports both local MCP access and the hosted ChatGPT Work connectio
 | Applies generic summarization | Follows a design-thinking path from evidence to action |
 | Hides the source of an answer | Links outputs back to inspectable source notes |
 | Ends with prose | Produces ranked pain points, How-Might-We prompts, solution starters, and Excel outputs |
+| Loses follow-through in meeting notes | Surfaces captured actions in The Lineup and preserves their source-note link |
 
 Obsidian is an excellent personal knowledge workspace. SKATE addresses a different job: helping facilitators and project teams convert a live, multi-person workshop into governed, reusable evidence and then deliberately synthesize that evidence into improvement opportunities.
 

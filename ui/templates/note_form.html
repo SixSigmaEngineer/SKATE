@@ -17,6 +17,21 @@
     <label>Title<input name="title" value="{{ title }}" required></label>
     <label>Date<input name="entry_date" type="date" value="{{ entry_date }}"></label>
   </div>
+
+  <section class="lineup-fields panel" id="lineupFields" {% if entry_type != "action" %}hidden{% endif %}>
+    <div><p class="eyebrow">The Lineup</p><h2>Action tracking</h2><p class="muted">This Action Item will appear in The Lineup. It may stand alone or stay tied to the selected session.</p></div>
+    <div class="three">
+      <label>Lineup type
+        <select name="lineup_kind" id="noteLineupKind"><option value="action" {% if lineup_kind != "standard_work" %}selected{% endif %}>Action Item</option><option value="standard_work" {% if lineup_kind == "standard_work" %}selected{% endif %}>Standard Work</option></select>
+      </label>
+      <label>Owner<input name="owner" value="{{ owner }}" placeholder="Optional"></label>
+      <label>Due<input name="due_date" type="date" value="{{ due_date }}"></label>
+    </div>
+    <div class="two">
+      <label>Cadence<select name="cadence">{% for key, label in lineup_cadences.items() %}<option value="{{ key }}" {% if cadence == key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+      <label>Progress<select name="lineup_status"><option value="open" {% if lineup_status != "landed" %}selected{% endif %}>Up Next</option><option value="landed" {% if lineup_status == "landed" %}selected{% endif %}>Landed</option></select></label>
+    </div>
+  </section>
   <div class="three">
     <label>Object Type
       <select name="entry_type" id="entryType">
@@ -134,10 +149,14 @@
 const body = document.getElementById("body");
 const statusLine = document.getElementById("statusLine");
 const entryType = document.getElementById("entryType");
+const lineupFields = document.getElementById("lineupFields");
 const sessionSelect = document.getElementById("sessionSelect");
 const sessionLabel = document.getElementById("sessionLabel");
 const newSessionLabel = document.getElementById("newSessionLabel");
 const noteForm = document.getElementById("noteForm");
+function updateLineupFields() { lineupFields.hidden = entryType.value !== "action"; }
+entryType.addEventListener("change", updateLineupFields);
+updateLineupFields();
 const draftId = noteForm.dataset.noteDraftId || "";
 function getDraftStorageKey() {
   return draftId && window.SKATEWorkspace ? window.SKATEWorkspace.draftPrefix + draftId : "";

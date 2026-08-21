@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}SKATE{% endblock %}</title>
   <link rel="icon" href="/favicon.ico?v=2">
-  <link rel="stylesheet" href="/static/style.css?v=20260715-settings-spacing1">
+  <link rel="stylesheet" href="/static/style.css?v=20260725-lineup1">
 </head>
 <body>
   <header class="topbar">
@@ -19,6 +19,7 @@
       <a href="/new" title="New Note" data-new-note-tab><img class="nav-icon" src="/static/icons/new.svg" alt=""><span>New Note</span></a>
       <a href="/" title="Library"><img class="nav-icon" src="/static/icons/library.svg" alt=""><span>Library</span></a>
       <a href="/sessions" title="Sessions"><img class="nav-icon" src="/static/icons/halfpipe.svg" alt=""><span>Sessions</span></a>
+      <a href="/lineup" title="The Lineup"><img class="nav-icon" src="/static/icons/lineup.svg" alt=""><span>Lineup</span></a>
       <a href="/grind" title="Grind"><img class="nav-icon" src="/static/icons/grind.svg" alt=""><span>Grind</span></a>
       <a href="/spotter" title="Spotter"><img class="nav-icon" src="/static/icons/spotter.svg" alt=""><span>Spotter</span></a>
       <a href="/spotter-live" title="Spotter Live"><img class="nav-icon" src="/static/icons/mic.svg" alt=""><span>Spotter Live</span></a>
@@ -48,6 +49,7 @@
       <div class="sidebar-tabs">
         <a href="/">Library</a>
         <a href="/sessions">Sessions</a>
+        <a href="/lineup">The Lineup</a>
       </div>
       <div class="sidebar-heading"><h3>Sessions</h3><a href="/sessions/new">+</a></div>
       <div class="stack">
@@ -58,7 +60,7 @@
       <div class="memory-tree">
         <h3>Object Types</h3>
         {% for key, meta in entry_types.items() %}
-          <a class="memory-tree-row" href="/grind?entry_type={{ key }}"><span>{{ meta.label }}</span></a>
+          <a class="memory-tree-row" href="{% if key == 'action' %}/lineup{% else %}/grind?entry_type={{ key }}{% endif %}"><span>{{ meta.label }}</span></a>
         {% endfor %}
         <h3>Themes</h3>
         {% for row in themes[:10] %}

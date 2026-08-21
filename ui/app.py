@@ -23,8 +23,10 @@ import uuid
 import webbrowser
 import wave
 import zipfile
+import hashlib
+from calendar import monthrange
 from io import BytesIO
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlencode
 from urllib.request import Request as UrlRequest, urlopen
@@ -137,6 +139,13 @@ WHISPER_MODELS = [
 STATUS_OPTIONS = ["active", "inactive"]
 SESSION_STATUS_OPTIONS = {"active", "inactive"}
 SOURCE_OPTIONS = ["manual note", "workshop capture", "voice transcript", "audio upload", "spotter", "grind capture", "imported note"]
+LINEUP_CADENCES = {
+    "once": "One time",
+    "daily": "Daily",
+    "weekdays": "Weekdays",
+    "weekly": "Weekly",
+    "monthly": "Monthly",
+}
 
 SPOTTER_MODES = [
     {
@@ -1697,6 +1706,13 @@ def _write_entry(
     status: str,
     source: str,
     body: str,
+    lineup_status: str = "",
+    lineup_kind: str = "action",
+    owner: str = "",
+    due_date: str = "",
+    cadence: str = "once",
+    last_completed: str = "",
+    captured_from: str = "",
 ):
     metadata = {
         "title": title,
@@ -1713,6 +1729,18 @@ def _write_entry(
         "relationships": relationships,
         "source": source,
     }
+    if _clean_entry_type(entry_type) == "action":
+        metadata.update(
+            {
+                "lineup_status": lineup_status if lineup_status in {"open", "landed"} else "open",
+                "lineup_kind": lineup_kind if lineup_kind in {"action", "standard_work"} else "action",
+                "owner": owner.strip(),
+                "due_date": due_date.strip(),
+                "cadence": cadence if cadence in LINEUP_CADENCES else "once",
+                "last_completed": last_completed.strip(),
+                "captured_from": captured_from.strip(),
+            }
+        )
     post = frontmatter.Post(body.strip() + "\n", **metadata)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(frontmatter.dumps(post), encoding="utf-8")
@@ -1743,6 +1771,78 @@ def _checked(value: str | None) -> bool:
     return str(value or "").lower() in {"1", "true", "yes", "on"}
 
 
+def _embedded_actions(entry) -> list[dict[str, str]]:
+    """Return actionable #A bullets captured inside an ordinary memory object."""
+    actions = []
+    for match in re.finditer(r"(?m)^\s*[-*]\s+#A:\s*(.+?)\s*$", entry.body or ""):
+        text = match.group(1).strip()
+        if not text:
+            continue
+        fingerprint = hashlib.sha1(f"{entry.file_id}\n{text}".encode("utf-8")).hexdigest()[:12]
+        actions.append(
+            {
+                "text": text,
+                "source_id": entry.file_id,
+                "source_title": entry.title,
+                "session": entry.session,
+                "session_label": entry.session_display if entry.session else "",
+                "fingerprint": fingerprint,
+                "captured_from": f"{entry.file_id}#{fingerprint}",
+            }
+        )
+    return actions
+
+
+def _next_due_date(current: str, cadence: str) -> str:
+    try:
+        anchor = date.fromisoformat(current) if current else date.today()
+    except ValueError:
+        anchor = date.today()
+    anchor = max(anchor, date.today())
+    if cadence == "daily":
+        return (anchor + timedelta(days=1)).isoformat()
+    if cadence == "weekdays":
+        candidate = anchor + timedelta(days=1)
+        while candidate.weekday() >= 5:
+            candidate += timedelta(days=1)
+        return candidate.isoformat()
+    if cadence == "weekly":
+        return (anchor + timedelta(days=7)).isoformat()
+    if cadence == "monthly":
+        year = anchor.year + (1 if anchor.month == 12 else 0)
+        month = 1 if anchor.month == 12 else anchor.month + 1
+        return date(year, month, min(anchor.day, monthrange(year, month)[1])).isoformat()
+    return ""
+
+
+def _lineup_context(entries, session: str = "") -> dict:
+    today = date.today().isoformat()
+    tracked = [entry for entry in entries if entry.entry_type == "action" and entry.status != "inactive"]
+    if session:
+        tracked = [entry for entry in tracked if entry.session == session]
+    tracked.sort(key=lambda entry: (entry.lineup_status == "landed", entry.due_date or "9999-12-31", entry.title.lower()))
+    standard_work = [entry for entry in tracked if entry.lineup_kind == "standard_work"]
+    actions = [entry for entry in tracked if entry.lineup_kind != "standard_work"]
+    promoted = {entry.captured_from for entry in load_all_entries() if entry.captured_from}
+    captured = []
+    for entry in entries:
+        if entry.entry_type == "action" or entry.status == "inactive":
+            continue
+        if session and entry.session != session:
+            continue
+        for action in _embedded_actions(entry):
+            action["promoted"] = action["captured_from"] in promoted
+            captured.append(action)
+    return {
+        "lineup_actions": actions,
+        "standard_work": standard_work,
+        "captured_actions": captured,
+        "lineup_today": today,
+        "lineup_open_count": sum(entry.lineup_status != "landed" for entry in actions),
+        "lineup_landed_count": sum(entry.lineup_status == "landed" for entry in actions),
+    }
+
+
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
     entries = load_all_entries()
@@ -1756,6 +1856,119 @@ def home(request: Request):
             **sidebar,
         },
     )
+
+
+@app.get("/lineup", response_class=HTMLResponse)
+def lineup_page(request: Request, session: str | None = Query(default=None)):
+    entries = load_all_entries()
+    selected_session = _slugify(session or "") if session else ""
+    sidebar = _sidebar_context()
+    return TEMPLATES.TemplateResponse(
+        request,
+        "lineup.html",
+        {
+            "selected_session": selected_session,
+            "lineup_cadences": LINEUP_CADENCES,
+            **_lineup_context(entries, selected_session),
+            **sidebar,
+        },
+    )
+
+
+@app.post("/lineup/new")
+async def create_lineup_item(request: Request):
+    form = await _read_form(request)
+    title = str(form.get("title", "")).strip()
+    if not title:
+        return HTMLResponse("An action needs a title", status_code=400)
+    session_raw = str(form.get("session", "")).strip()
+    session = _slugify(session_raw) if session_raw else ""
+    session_rows = session_stats(load_all_entries())
+    session_row = next((row for row in session_rows if row["key"] == session), None)
+    session_label = session_row["label"] if session_row else ""
+    lineup_kind = str(form.get("lineup_kind", "action")).strip().lower()
+    lineup_kind = lineup_kind if lineup_kind in {"action", "standard_work"} else "action"
+    cadence = str(form.get("cadence", "once")).strip().lower()
+    cadence = cadence if cadence in LINEUP_CADENCES else "once"
+    if lineup_kind == "standard_work" and cadence == "once":
+        cadence = "weekly"
+    due_date = str(form.get("due_date", "")).strip()
+    body = f"# {title}\n\n## Summary\n\n{str(form.get('details', '')).strip() or title}\n"
+    folder = _notes_folder()
+    entry_date = date.today().isoformat()
+    path = folder / f"{entry_date}-{_slugify(title)}.md"
+    counter = 2
+    while path.exists():
+        path = folder / f"{entry_date}-{_slugify(title)}-{counter}.md"
+        counter += 1
+    _write_entry(
+        path, title, entry_date, "action", session, session_label, "active",
+        [], ["Standard Work"] if lineup_kind == "standard_work" else [], [],
+        "active", "lineup", body,
+        lineup_status="open", lineup_kind=lineup_kind,
+        owner=str(form.get("owner", "")), due_date=due_date, cadence=cadence,
+    )
+    suffix = f"?{urlencode({'session': session})}" if session else ""
+    return RedirectResponse(url=f"/lineup{suffix}", status_code=303)
+
+
+@app.post("/lineup/toggle/{file_id:path}")
+async def toggle_lineup_item(request: Request, file_id: str):
+    entry = find_entry_by_id(file_id)
+    if entry is None or entry.entry_type != "action":
+        return HTMLResponse("Action item not found", status_code=404)
+    form = await _read_form(request)
+    post = frontmatter.load(entry.path, encoding="utf-8")
+    today = date.today().isoformat()
+    if entry.lineup_kind == "standard_work" and entry.cadence != "once":
+        if entry.last_completed == today:
+            post.metadata["last_completed"] = ""
+            post.metadata["due_date"] = today
+        else:
+            post.metadata["last_completed"] = today
+            post.metadata["due_date"] = _next_due_date(entry.due_date, entry.cadence)
+        post.metadata["lineup_status"] = "open"
+    else:
+        landed = entry.lineup_status != "landed"
+        post.metadata["lineup_status"] = "landed" if landed else "open"
+        post.metadata["last_completed"] = today if landed else ""
+    entry.path.write_text(frontmatter.dumps(post), encoding="utf-8")
+    return_to = str(form.get("return_to", "/lineup")).strip()
+    if not return_to.startswith("/") or return_to.startswith("//"):
+        return_to = "/lineup"
+    return RedirectResponse(url=return_to, status_code=303)
+
+
+@app.post("/lineup/promote/{file_id:path}")
+async def promote_captured_action(request: Request, file_id: str):
+    source_entry = find_entry_by_id(file_id)
+    if source_entry is None:
+        return HTMLResponse("Source note not found", status_code=404)
+    form = await _read_form(request)
+    fingerprint = str(form.get("fingerprint", "")).strip()
+    action = next((item for item in _embedded_actions(source_entry) if item["fingerprint"] == fingerprint), None)
+    if action is None:
+        return HTMLResponse("Captured action not found", status_code=404)
+    if any(entry.captured_from == action["captured_from"] for entry in load_all_entries()):
+        return RedirectResponse(url="/lineup", status_code=303)
+    title = action["text"]
+    entry_date = date.today().isoformat()
+    folder = _notes_folder()
+    path = folder / f"{entry_date}-{_slugify(title)}.md"
+    counter = 2
+    while path.exists():
+        path = folder / f"{entry_date}-{_slugify(title)}-{counter}.md"
+        counter += 1
+    body = f"# {title}\n\n## Summary\n\nCaptured in [{source_entry.title}](/entry/{source_entry.file_id}).\n"
+    _write_entry(
+        path, title, entry_date, "action", source_entry.session, source_entry.session_display if source_entry.session else "",
+        source_entry.session_status, [], list(source_entry.themes),
+        [{"type": "references", "target": source_entry.file_id, "note": "Captured as #A in source note"}],
+        "active", "lineup", body, lineup_status="open", lineup_kind="action",
+        captured_from=action["captured_from"],
+    )
+    suffix = f"?{urlencode({'session': source_entry.session})}" if source_entry.session else ""
+    return RedirectResponse(url=f"/lineup{suffix}", status_code=303)
 
 
 @app.get("/new", response_class=HTMLResponse)
@@ -1797,6 +2010,12 @@ def new_note(
             "source_options": _options_with_current(SOURCE_OPTIONS, current_source),
             "summary": note_summary,
             "body": body or _default_note_body(note_title or "Untitled", note_summary),
+            "lineup_status": "open",
+            "lineup_kind": "action",
+            "owner": "",
+            "due_date": "",
+            "cadence": "once",
+            "lineup_cadences": LINEUP_CADENCES,
             "whisper_models": WHISPER_MODELS,
             "transcription_model": _load_settings().get("transcription_model", "base"),
             **sidebar,
@@ -1821,6 +2040,9 @@ async def create_note(request: Request):
     status = status if status in STATUS_OPTIONS else "active"
     source = str(form.get("source", "")).strip() or "manual note"
     body = str(form.get("body", "")).strip() or _default_note_body(title)
+    lineup_status = str(form.get("lineup_status", "open")).strip().lower()
+    lineup_kind = str(form.get("lineup_kind", "action")).strip().lower()
+    cadence = str(form.get("cadence", "once")).strip().lower()
 
     folder = _notes_folder()
     base_name = f"{entry_date}-{_slugify(title)}.md"
@@ -1844,6 +2066,11 @@ async def create_note(request: Request):
         status,
         source,
         body,
+        lineup_status=lineup_status,
+        lineup_kind=lineup_kind,
+        owner=str(form.get("owner", "")),
+        due_date=str(form.get("due_date", "")),
+        cadence=cadence,
     )
     file_id = path.relative_to(CONVERSATIONS).as_posix()
     return RedirectResponse(url=f"/entry/{file_id}", status_code=303)
@@ -1923,8 +2150,9 @@ def _ensure_session(session_slug: str, session_label: str, summary: str = "") ->
 
 @app.get("/session/{session_key}", response_class=HTMLResponse)
 def session_page(request: Request, session_key: str):
-    entries = filter_entries(load_all_entries(), session=session_key)
-    rows = session_stats(load_all_entries())
+    all_entries = load_all_entries()
+    entries = filter_entries(all_entries, session=session_key)
+    rows = session_stats(all_entries)
     current = next((row for row in rows if row["key"] == session_key), None)
     if current is None and session_key == "unassigned":
         current = {"key": "unassigned", "label": "Unassigned", "status": "", "count": len(entries), "types": {}}
@@ -1935,6 +2163,7 @@ def session_page(request: Request, session_key: str):
         {
             "session": current or {"key": session_key, "label": session_key.replace("-", " ").title(), "status": "", "count": len(entries)},
             "entries": entries,
+            **_lineup_context(all_entries, session_key),
             **sidebar,
         },
     )
@@ -1978,6 +2207,10 @@ def view_entry(request: Request, file_id: str):
     # remains portable and human-readable as ``- #P: ...``.
     render_body = re.sub(r"(?m)^(\s*-\s+)#([POAQRSI]):", r"\1\\#\2:", entry.body)
     body_html = _decorate_capture_markers(MD.convert(render_body))
+    embedded_actions = _embedded_actions(entry) if entry.entry_type != "action" else []
+    promoted_sources = {candidate.captured_from for candidate in load_all_entries() if candidate.captured_from}
+    for action in embedded_actions:
+        action["promoted"] = action["captured_from"] in promoted_sources
     sidebar = _sidebar_context()
     return TEMPLATES.TemplateResponse(
         request,
@@ -1985,6 +2218,8 @@ def view_entry(request: Request, file_id: str):
         {
             "entry": entry,
             "body_html": body_html,
+            "embedded_actions": embedded_actions,
+            "lineup_today": date.today().isoformat(),
             **sidebar,
         },
     )
@@ -2021,6 +2256,12 @@ def edit_entry(request: Request, file_id: str):
             "summary": entry.summary,
             "body": entry.body,
             "entry": entry,
+            "lineup_status": entry.lineup_status or "open",
+            "lineup_kind": entry.lineup_kind,
+            "owner": entry.owner,
+            "due_date": entry.due_date,
+            "cadence": entry.cadence,
+            "lineup_cadences": LINEUP_CADENCES,
             "whisper_models": WHISPER_MODELS,
             "transcription_model": _load_settings().get("transcription_model", "base"),
             **sidebar,
@@ -2049,6 +2290,9 @@ async def update_entry(request: Request, file_id: str):
     status = status if status in STATUS_OPTIONS else "active"
     source = str(form.get("source", "")).strip() or "manual note"
     body = str(form.get("body", "")).strip() or _default_note_body(title)
+    lineup_status = str(form.get("lineup_status", entry.lineup_status or "open")).strip().lower()
+    lineup_kind = str(form.get("lineup_kind", entry.lineup_kind)).strip().lower()
+    cadence = str(form.get("cadence", entry.cadence)).strip().lower()
 
     _write_entry(
         entry.path,
@@ -2064,6 +2308,13 @@ async def update_entry(request: Request, file_id: str):
         status,
         source,
         body,
+        lineup_status=lineup_status,
+        lineup_kind=lineup_kind,
+        owner=str(form.get("owner", entry.owner)),
+        due_date=str(form.get("due_date", entry.due_date)),
+        cadence=cadence,
+        last_completed=entry.last_completed,
+        captured_from=entry.captured_from,
     )
     return RedirectResponse(url=f"/entry/{entry.file_id}", status_code=303)
 

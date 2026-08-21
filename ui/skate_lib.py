@@ -202,6 +202,13 @@ class Entry:
     relationships: list[dict[str, str]] = field(default_factory=list)
     source: str = ""
     body: str = ""
+    lineup_status: str = ""
+    lineup_kind: str = "action"
+    owner: str = ""
+    due_date: str = ""
+    cadence: str = "once"
+    last_completed: str = ""
+    captured_from: str = ""
 
     @property
     def type_label(self) -> str:
@@ -302,6 +309,13 @@ def load_entry(path: Path) -> Entry:
         relationships=_coerce_relationships(meta.get("relationships")),
         source=str(meta.get("source", "")),
         body=post.content,
+        lineup_status=str(meta.get("lineup_status", "") or "").strip().lower(),
+        lineup_kind=str(meta.get("lineup_kind", "action") or "action").strip().lower(),
+        owner=str(meta.get("owner", "") or "").strip(),
+        due_date=str(meta.get("due_date", "") or "").strip(),
+        cadence=str(meta.get("cadence", "once") or "once").strip().lower(),
+        last_completed=str(meta.get("last_completed", "") or "").strip(),
+        captured_from=str(meta.get("captured_from", "") or "").strip(),
     )
 
 
